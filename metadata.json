@@ -1,0 +1,6 @@
+{
+  "name": "TipOffPh - Philippine Basketball News & Updates",
+  "description": "Independent Philippine basketball news publication covering PBA, MPBL, UAAP, NCAA, Gilas Pilipinas, PSL, scores, schedules, and grassroots hoops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
