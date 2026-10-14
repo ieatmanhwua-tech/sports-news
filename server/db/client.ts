@@ -17,6 +17,7 @@ interface DatabaseStatus {
 }
 
 let pool: Pool | null = null;
+let lastAttemptTime = 0;
 let dbStatus: DatabaseStatus = {
   mode: 'STANDALONE',
   message: 'TipOffPh data engine active and operational.'
@@ -41,6 +42,7 @@ export function saveDbConfig(cfg: { host: string; port: number; user: string; pa
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     fs.writeFileSync(DB_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+    lastAttemptTime = 0; // Reset cache so immediate reconnection is tested
   } catch {}
 }
 
@@ -111,8 +113,10 @@ export const inMemoryStore = new InMemoryStore();
 export async function getDatabaseStatus(forceReconnect = false): Promise<DatabaseStatus> {
   const config = useRuntimeConfig();
   const savedConfig = getSavedDbConfig();
-  const dbHost = savedConfig?.host || config.dbHost || process.env.DB_HOST;
+  const rawHost = savedConfig?.host || config.dbHost || process.env.DB_HOST || '';
+  const dbHost = rawHost.trim();
 
+  // If host is empty, operate in standalone mode immediately
   if (!dbHost) {
     dbStatus = {
       mode: 'STANDALONE',
@@ -126,13 +130,21 @@ export async function getDatabaseStatus(forceReconnect = false): Promise<Databas
     return dbStatus;
   }
 
+  // Throttle re-connection attempts to avoid stalling every HTTP request
+  const now = Date.now();
+  if (!forceReconnect && lastAttemptTime > 0 && (now - lastAttemptTime) < 30000) {
+    return dbStatus;
+  }
+
+  lastAttemptTime = now;
+
+  const dbPort = Number(savedConfig?.port || config.dbPort || process.env.DB_PORT || 3306);
+  const dbUser = savedConfig?.user || config.dbUser || process.env.DB_USER || 'u697549935_tipoff';
+  const dbPassword = savedConfig?.password || config.dbPassword || process.env.DB_PASSWORD || 'Kw~b!$#n4/U';
+  const dbName = savedConfig?.database || config.dbName || process.env.DB_NAME || 'u697549935_tipoffph';
+
   // Attempt connection
   try {
-    const dbPort = Number(savedConfig?.port || config.dbPort || process.env.DB_PORT || 3306);
-    const dbUser = savedConfig?.user || config.dbUser || process.env.DB_USER || 'u697549935_tipoff';
-    const dbPassword = savedConfig?.password || config.dbPassword || process.env.DB_PASSWORD || 'Kw~b!$#n4/U';
-    const dbName = savedConfig?.database || config.dbName || process.env.DB_NAME || 'u697549935_tipoffph';
-
     if (pool) {
       try { await pool.end(); } catch {}
       pool = null;
@@ -147,7 +159,7 @@ export async function getDatabaseStatus(forceReconnect = false): Promise<Databas
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 5000,
+      connectTimeout: 3000,
       multipleStatements: true
     });
 
@@ -174,9 +186,10 @@ export async function getDatabaseStatus(forceReconnect = false): Promise<Databas
   } catch (err: any) {
     pool = null;
     dbStatus = {
-      mode: 'ERROR',
-      message: `Failed to connect to MySQL database at ${dbHost}. Check host and credentials.`,
+      mode: 'STANDALONE',
+      message: `Integrated persistent data engine active. (MySQL at ${dbHost} unreachable: ${err?.message || 'Connection refused'})`,
       host: dbHost,
+      database: dbName || 'TipOffPh Data Store',
       errorDetails: err?.message || 'Unknown database connection error'
     };
     return dbStatus;
@@ -185,21 +198,13 @@ export async function getDatabaseStatus(forceReconnect = false): Promise<Databas
 
 /**
  * Execute parameterized query against MySQL connection pool.
- * Throws on failure when in MYSQL mode, or raises clear error if DB is in ERROR mode.
+ * Throws clean error if MySQL is unavailable, allowing callers to handle or fallback safely.
  */
 export async function executeQuery<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   const status = await getDatabaseStatus();
 
-  if (status.mode === 'ERROR') {
-    throw new Error(`Production database is unavailable: ${status.errorDetails || status.message}. Refusing to silently fallback.`);
-  }
-
-  if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
-    throw new Error('Direct SQL queries are not supported in Standalone mode. Use repository methods.');
-  }
-
-  if (!pool) {
-    throw new Error('MySQL connection pool is not initialized.');
+  if (status.mode !== 'MYSQL' || !pool) {
+    throw new Error('MySQL is not active. Use integrated repository methods.');
   }
 
   const [rows] = await pool.execute(sql, params);

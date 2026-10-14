@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { NAVIGATION_GROUPS } from '~/shared/categories';
+import tipoffLogo from '~/assets/img/TipOffPh_logo.png';
 </script>
 
 <template>
-  <footer class="bg-[#10141a] text-slate-400 text-xs border-t border-slate-800 mt-16">
+  <footer class="bg-[#070b14]/95 backdrop-blur-xl text-slate-400 text-xs border-t border-cyan-500/20 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] mt-16 relative">
     <!-- Top Category Directory Grid -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8">
@@ -27,12 +28,16 @@ import { NAVIGATION_GROUPS } from '~/shared/categories';
       <!-- Mid Section: Brand Description & Policies -->
       <div class="mt-12 pt-8 border-t border-slate-800/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div class="max-w-md space-y-2">
-          <div class="flex items-center gap-2">
-            <span class="w-6 h-6 rounded bg-[#E67E22] flex items-center justify-center font-black text-slate-950 text-xs">TP</span>
-            <span class="text-base font-black tracking-tight text-white">
-              TipOff<span class="text-[#E67E22]">Ph</span>
-            </span>
-          </div>
+          <NuxtLink to="/" class="inline-block group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded">
+            <img 
+              :src="tipoffLogo" 
+              alt="TipOffPh - The Philippine Basketball Court" 
+              class="h-14 sm:h-16 md:h-20 w-auto max-w-[260px] sm:max-w-[320px] md:max-w-[380px] object-contain brightness-95 group-hover:brightness-105 transition-all drop-shadow-sm"
+              width="2172"
+              height="724" 
+            />
+            <span class="sr-only">TipOffPh - The Philippine Basketball Court</span>
+          </NuxtLink>
           <p class="text-[11px] text-slate-400 leading-relaxed">
             Independent Philippine basketball news, analysis, scores, and editorial reporting. Covering the Philippine Basketball Association (PBA), MPBL, UAAP, NCAA, Gilas Pilipinas, and grassroots basketball across the nation.
           </p>

@@ -108,179 +108,187 @@ useHead({
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto py-2">
+  <div class="max-w-4xl mx-auto py-2 space-y-6">
     <!-- Breadcrumbs Navigation -->
-    <nav class="flex items-center text-xs text-slate-500 mb-4 overflow-x-auto whitespace-nowrap" aria-label="Breadcrumb">
-      <NuxtLink to="/" class="hover:text-slate-900 transition-colors">Home</NuxtLink>
-      <ChevronRight class="w-3.5 h-3.5 mx-1 text-slate-400 shrink-0" />
+    <nav class="flex items-center text-xs text-slate-400 mb-2 overflow-x-auto whitespace-nowrap scrollbar-none touch-pan-x bg-slate-900/60 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-800/80" aria-label="Breadcrumb">
+      <NuxtLink to="/" class="hover:text-amber-300 transition-colors">Home</NuxtLink>
+      <ChevronRight class="w-3.5 h-3.5 mx-1 text-slate-600 shrink-0" />
       <NuxtLink 
         v-if="article.category" 
         :to="`/${article.primaryCategoryId}`" 
-        class="hover:text-slate-900 transition-colors"
+        class="hover:text-amber-300 transition-colors"
       >
         {{ article.category.name }}
       </NuxtLink>
-      <ChevronRight class="w-3.5 h-3.5 mx-1 text-slate-400 shrink-0" />
-      <span class="text-slate-700 truncate max-w-[280px] sm:max-w-md">{{ article.title }}</span>
+      <ChevronRight class="w-3.5 h-3.5 mx-1 text-slate-600 shrink-0" />
+      <span class="text-slate-200 truncate max-w-[220px] sm:max-w-md">{{ article.title }}</span>
     </nav>
 
-    <!-- Header Section -->
-    <header class="mb-6 space-y-3">
-      <!-- Unboxed Content Type & Category Kicker -->
-      <div class="flex items-center gap-2 text-xs font-semibold">
-        <NuxtLink 
-          :to="`/${article.primaryCategoryId}`" 
-          class="text-[#D35400] hover:underline uppercase tracking-wider font-bold"
-        >
-          {{ article.category?.name || 'Basketball' }}
-        </NuxtLink>
-        <span class="text-slate-300" aria-hidden="true">·</span>
-        <span 
-          class="text-xs font-semibold px-2 py-0.5 rounded border"
-          :class="{
-            'bg-amber-50 text-amber-800 border-amber-200': article.contentType === 'rumor',
-            'bg-indigo-50 text-indigo-800 border-indigo-200': article.contentType === 'editorial',
-            'bg-emerald-50 text-emerald-800 border-emerald-200': article.contentType === 'interview',
-            'bg-slate-100 text-slate-700 border-slate-200': article.contentType === 'news'
-          }"
-        >
-          {{ typeBadge.label }}
-        </span>
-      </div>
+    <!-- Main Glassmorphic Article Container -->
+    <article class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 sm:p-7 md:p-10 shadow-[0_4px_35px_rgba(0,0,0,0.7)] ring-1 ring-cyan-500/20 relative overflow-hidden">
+      <!-- Ambient light flare -->
+      <div class="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-orange-500/10 blur-[100px] pointer-events-none" />
 
-      <!-- Single H1 Title -->
-      <h1 class="text-2xl sm:text-3xl md:text-4xl font-black text-slate-950 tracking-tight leading-tight">
-        {{ article.title }}
-      </h1>
+      <!-- Header Section -->
+      <header class="mb-6 sm:mb-8 space-y-3 sm:space-y-4">
+        <!-- Content Type & Category Kicker -->
+        <div class="flex items-center gap-2 text-xs font-semibold flex-wrap">
+          <NuxtLink 
+            :to="`/${article.primaryCategoryId}`" 
+            class="text-orange-400 hover:text-orange-300 uppercase tracking-wider font-black drop-shadow-sm"
+          >
+            {{ article.category?.name || 'Basketball' }}
+          </NuxtLink>
+          <span class="text-slate-600" aria-hidden="true">·</span>
+          <span 
+            class="text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-xs"
+            :class="{
+              'bg-amber-500/20 text-amber-300 border-amber-500/40': article.contentType === 'rumor',
+              'bg-indigo-500/20 text-indigo-300 border-indigo-500/40': article.contentType === 'editorial',
+              'bg-emerald-500/20 text-emerald-300 border-emerald-500/40': article.contentType === 'interview',
+              'bg-slate-800 text-slate-300 border-slate-700': article.contentType === 'news'
+            }"
+          >
+            {{ typeBadge.label }}
+          </span>
+        </div>
 
-      <!-- Subheadline / Excerpt -->
-      <p class="text-base sm:text-lg text-slate-700 leading-relaxed font-serif italic border-l-2 border-[#E67E22] pl-3 py-1">
-        {{ article.excerpt }}
-      </p>
+        <!-- Single H1 Title -->
+        <h1 class="text-xl sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
+          {{ article.title }}
+        </h1>
 
-      <!-- Byline & Timestamps Row -->
-      <div class="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
-        <div class="flex items-center gap-2.5">
-          <img 
-            v-if="article.author?.avatarUrl" 
-            :src="article.author.avatarUrl" 
-            :alt="article.author.name" 
-            class="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
-          />
-          <div>
-            <div class="flex items-center gap-1.5 font-bold text-slate-900">
-              <NuxtLink :to="`/authors/${article.author?.slug}`" class="hover:text-[#D35400] hover:underline">
-                {{ article.author?.name || 'Staff Writer' }}
-              </NuxtLink>
-              <span v-if="article.author?.role" class="font-normal text-slate-500">
-                ({{ article.author.role }})
-              </span>
-            </div>
-            <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-              <span>Published {{ formatManilaTime(article.publishedAt) }}</span>
-              <span v-if="article.updatedAt" class="text-slate-400">·</span>
-              <span v-if="article.updatedAt" class="font-medium text-slate-700">
-                Updated {{ formatManilaTime(article.updatedAt) }}
-              </span>
+        <!-- Subheadline / Excerpt -->
+        <p class="text-sm sm:text-lg text-slate-300 leading-relaxed font-serif italic border-l-2 border-orange-500 pl-3 sm:pl-4 py-1 bg-orange-500/5 rounded-r-lg">
+          {{ article.excerpt }}
+        </p>
+
+        <!-- Byline & Timestamps Row -->
+        <div class="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-slate-400">
+          <div class="flex items-center gap-3">
+            <img 
+              v-if="article.author?.avatarUrl" 
+              :src="article.author.avatarUrl" 
+              :alt="article.author.name" 
+              class="w-10 h-10 rounded-full object-cover border border-slate-700 shrink-0"
+            />
+            <div>
+              <div class="flex items-center gap-1.5 font-bold text-slate-200">
+                <NuxtLink :to="`/authors/${article.author?.slug}`" class="hover:text-orange-400 hover:underline">
+                  {{ article.author?.name || 'Staff Writer' }}
+                </NuxtLink>
+                <span v-if="article.author?.role" class="font-normal text-slate-400">
+                  ({{ article.author.role }})
+                </span>
+              </div>
+              <div class="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                <span>Published {{ formatManilaTime(article.publishedAt) }}</span>
+                <span v-if="article.updatedAt" class="text-slate-600">·</span>
+                <span v-if="article.updatedAt" class="font-bold text-amber-300">
+                  Updated {{ formatManilaTime(article.updatedAt) }}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Social Share Controls -->
-        <ShareButtons 
-          :title="article.title" 
-          :url="canonicalUrl" 
-          class="shrink-0"
-        />
-      </div>
-    </header>
-
-    <!-- Lead Featured Image with Alt and Credit -->
-    <figure class="mb-8 rounded-lg overflow-hidden bg-slate-900 border border-slate-200">
-      <img 
-        :src="article.featuredImageUrl" 
-        :alt="article.imageAlt || article.title"
-        loading="eager"
-        class="w-full max-h-[500px] object-cover"
-      />
-      <figcaption class="p-2.5 bg-slate-100 text-[11px] text-slate-600 flex items-center justify-between">
-        <span>{{ article.imageAlt }}</span>
-        <span class="text-slate-500 italic">Photo: {{ article.imageCredit }}</span>
-      </figcaption>
-    </figure>
-
-    <!-- Reading Column (Optimized 680-740px comfortable line length) -->
-    <div class="max-w-[720px] mx-auto">
-      <!-- Article Body -->
-      <div class="prose prose-slate max-w-none text-slate-800 leading-relaxed text-base sm:text-lg space-y-5">
-        <template v-for="(paragraph, pIdx) in article.body.split('\n\n')" :key="pIdx">
-          <!-- Render markdown-like subheadings -->
-          <h2 v-if="paragraph.startsWith('### ')" class="text-xl sm:text-2xl font-bold text-slate-900 mt-6 mb-2">
-            {{ paragraph.replace('### ', '') }}
-          </h2>
-          <h3 v-else-if="paragraph.startsWith('## ')" class="text-lg sm:text-xl font-bold text-slate-900 mt-5 mb-2">
-            {{ paragraph.replace('## ', '') }}
-          </h3>
-          <blockquote v-else-if="paragraph.startsWith('> ')" class="border-l-4 border-[#E67E22] pl-4 italic text-slate-700 my-4 bg-amber-50/50 py-2">
-            {{ paragraph.replace('> ', '') }}
-          </blockquote>
-          <p v-else class="leading-relaxed">
-            {{ paragraph }}
-          </p>
-        </template>
-      </div>
-
-      <!-- Source Attribution Reference -->
-      <div v-if="article.sourceName || article.sourceUrl" class="mt-8 p-3.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600">
-        <div class="flex items-center gap-1.5 font-bold text-slate-800 mb-1">
-          <ShieldCheck class="w-4 h-4 text-emerald-600" />
-          Reporting Transparency &amp; Sourcing
-        </div>
-        <p>
-          Information in this story was reported by TipOffPh editorial staff and verified against
-          <span class="font-semibold text-slate-800">{{ article.sourceName || 'official league announcements' }}</span>.
-          <a 
-            v-if="article.sourceUrl" 
-            :href="article.sourceUrl" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            class="text-[#D35400] underline inline-flex items-center gap-0.5 ml-1"
-          >
-            Original Reference <ExternalLink class="w-3 h-3" />
-          </a>
-        </p>
-      </div>
-
-      <!-- Mid-article Ad Slot -->
-      <div class="my-8">
-        <AdUnit format="banner" />
-      </div>
-
-      <!-- Bottom Share & Correction Callout -->
-      <div class="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <ShareButtons :title="article.title" :url="canonicalUrl" />
-        <NuxtLink to="/corrections-policy" class="text-xs text-slate-500 hover:text-slate-800 underline">
-          Found an error? View our Corrections Policy
-        </NuxtLink>
-      </div>
-
-      <!-- Related Stories Grid -->
-      <section v-if="related.length > 0" class="mt-12 pt-8 border-t border-slate-200">
-        <h3 class="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
-          <span class="w-2 h-2 bg-[#E67E22] rounded-full"></span>
-          Related Stories in {{ article.category?.name || 'Basketball' }}
-        </h3>
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <ArticleCard 
-            v-for="rel in related" 
-            :key="rel.id" 
-            :article="rel"
-            layout="vertical"
-            :show-excerpt="false"
+          <!-- Social Share Controls -->
+          <ShareButtons 
+            :title="article.title" 
+            :url="canonicalUrl" 
+            class="shrink-0"
           />
         </div>
-      </section>
-    </div>
+      </header>
+
+      <!-- Lead Featured Image with Alt and Credit -->
+      <figure class="mb-8 rounded-xl overflow-hidden bg-slate-950 border border-slate-700/80 shadow-lg">
+        <img 
+          :src="article.featuredImageUrl" 
+          :alt="article.imageAlt || article.title" 
+          loading="eager"
+          referrerpolicy="no-referrer"
+          @error="(e) => ((e.target as HTMLImageElement).src = '/img/articles/pba-governors-cup-2026.webp')"
+          class="w-full max-h-[500px] object-cover"
+        />
+        <figcaption class="p-3 bg-slate-900/90 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800">
+          <span>{{ article.imageAlt }}</span>
+          <span class="text-slate-500 italic">Photo: {{ article.imageCredit }}</span>
+        </figcaption>
+      </figure>
+
+      <!-- Reading Column (Optimized 680-740px comfortable line length) -->
+      <div class="max-w-[720px] mx-auto">
+        <!-- Article Body -->
+        <div class="prose prose-invert prose-slate max-w-none text-slate-200 leading-relaxed text-base sm:text-lg space-y-5">
+          <template v-for="(paragraph, pIdx) in article.body.split('\n\n')" :key="pIdx">
+            <!-- Render markdown-like subheadings -->
+            <h2 v-if="paragraph.startsWith('### ')" class="text-xl sm:text-2xl font-black text-white mt-8 mb-3 tracking-tight border-b border-slate-800 pb-2">
+              {{ paragraph.replace('### ', '') }}
+            </h2>
+            <h3 v-else-if="paragraph.startsWith('## ')" class="text-lg sm:text-xl font-bold text-white mt-6 mb-2">
+              {{ paragraph.replace('## ', '') }}
+            </h3>
+            <blockquote v-else-if="paragraph.startsWith('> ')" class="border-l-4 border-orange-500 pl-4 italic text-slate-200 my-5 bg-orange-500/10 py-3 rounded-r-lg">
+              {{ paragraph.replace('> ', '') }}
+            </blockquote>
+            <p v-else class="leading-relaxed text-slate-200">
+              {{ paragraph }}
+            </p>
+          </template>
+        </div>
+
+        <!-- Source Attribution Reference -->
+        <div v-if="article.sourceName || article.sourceUrl" class="mt-8 p-4 bg-slate-900/80 border border-slate-700/80 rounded-xl text-xs text-slate-300">
+          <div class="flex items-center gap-1.5 font-bold text-white mb-1">
+            <ShieldCheck class="w-4 h-4 text-emerald-400" />
+            Reporting Transparency &amp; Sourcing
+          </div>
+          <p>
+            Information in this story was reported by TipOffPh editorial staff and verified against
+            <span class="font-bold text-amber-300">{{ article.sourceName || 'official league announcements' }}</span>.
+            <a 
+              v-if="article.sourceUrl" 
+              :href="article.sourceUrl" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              class="text-orange-400 hover:text-orange-300 underline inline-flex items-center gap-0.5 ml-1 font-bold"
+            >
+              Original Reference <ExternalLink class="w-3 h-3" />
+            </a>
+          </p>
+        </div>
+
+        <!-- Mid-article Ad Slot -->
+        <div class="my-8">
+          <AdUnit format="banner" />
+        </div>
+
+        <!-- Bottom Share & Correction Callout -->
+        <div class="mt-8 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <ShareButtons :title="article.title" :url="canonicalUrl" />
+          <NuxtLink to="/corrections-policy" class="text-xs text-slate-400 hover:text-slate-200 underline">
+            Found an error? View our Corrections Policy
+          </NuxtLink>
+        </div>
+
+        <!-- Related Stories Grid -->
+        <section v-if="related.length > 0" class="mt-12 pt-8 border-t border-slate-800">
+          <h3 class="text-lg font-black text-white mb-6 flex items-center gap-2">
+            <span class="w-2 h-2 bg-orange-500 rounded-full shadow-[0_0_8px_#f97316]"></span>
+            Related Stories in {{ article.category?.name || 'Basketball' }}
+          </h3>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <ArticleCard 
+              v-for="rel in related" 
+              :key="rel.id" 
+              :article="rel" 
+              layout="vertical"
+              :show-excerpt="false"
+            />
+          </div>
+        </section>
+      </div>
+    </article>
   </div>
 </template>

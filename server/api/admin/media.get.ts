@@ -5,21 +5,27 @@ export default defineEventHandler(async () => {
   const publicImgDir = path.resolve(process.cwd(), 'public/img');
   const files: { name: string; url: string; size: number }[] = [];
 
-  if (fs.existsSync(publicImgDir)) {
-    const list = fs.readdirSync(publicImgDir);
+  function scanDir(dir: string, urlPrefix: string) {
+    if (!fs.existsSync(dir)) return;
+    const list = fs.readdirSync(dir);
     for (const f of list) {
-      if (/\.(png|jpe?g|webp|svg|gif)$/i.test(f)) {
-        try {
-          const stats = fs.statSync(path.join(publicImgDir, f));
+      const full = path.join(dir, f);
+      try {
+        const stats = fs.statSync(full);
+        if (stats.isDirectory()) {
+          scanDir(full, `${urlPrefix}/${f}`);
+        } else if (/\.(png|jpe?g|webp|svg|gif)$/i.test(f)) {
           files.push({
-            name: f,
-            url: `/img/${f}`,
+            name: `${urlPrefix.replace(/^\/img\/?/, '') ? urlPrefix.replace(/^\/img\/?/, '') + '/' : ''}${f}`,
+            url: `${urlPrefix}/${f}`,
             size: stats.size
           });
-        } catch {}
-      }
+        }
+      } catch {}
     }
   }
+
+  scanDir(publicImgDir, '/img');
 
   return {
     media: files

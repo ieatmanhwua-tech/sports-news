@@ -144,20 +144,20 @@ function selectLeague(league: LeagueItem) {
 
 <template>
   <nav 
-    class="bg-white border border-slate-200 rounded-lg p-2 sm:p-2.5 shadow-sm my-4 overflow-hidden flex items-center relative" 
+    class="bg-slate-900/85 backdrop-blur-xl border border-slate-700/80 rounded-xl p-2 sm:p-2.5 shadow-[0_4px_25px_rgba(0,0,0,0.6)] my-4 overflow-hidden flex items-center relative ring-1 ring-cyan-500/20" 
     aria-label="Browse by League"
   >
     <!-- Left Static Fixed Label: LEAGUES (Do not remove) -->
-    <div class="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-800 pl-2 sm:pl-3 pr-3 sm:pr-4 border-r border-slate-200 shrink-0 z-20 bg-white">
-      <Trophy class="w-4 h-4 text-[#E67E22] shrink-0" />
+    <div class="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-200 pl-2 sm:pl-3 pr-3 sm:pr-4 border-r border-slate-700/80 shrink-0 z-20 bg-slate-900/90">
+      <Trophy class="w-4 h-4 text-amber-400 shrink-0 drop-shadow-[0_0_6px_rgba(251,191,36,0.5)]" />
       <span>Leagues</span>
     </div>
 
     <!-- Infinite Marquee Viewport from Right to Left -->
     <div class="relative flex-1 overflow-hidden marquee-mask">
-      <div class="marquee-track flex items-center gap-6 sm:gap-8 hover:pause">
+      <div class="marquee-track flex items-center gap-4 sm:gap-6 hover:pause">
         <!-- Track 1 (Original set) -->
-        <div class="flex items-center gap-6 sm:gap-8 shrink-0 py-1">
+        <div class="flex items-center gap-4 sm:gap-6 shrink-0 py-1">
           <template v-for="league in leagues" :key="'t1-' + league.id">
             <!-- Filter Mode Button -->
             <button
@@ -165,21 +165,22 @@ function selectLeague(league: LeagueItem) {
               type="button"
               @click="selectLeague(league)"
               :title="league.fullName"
-              class="group relative flex items-center justify-center px-2.5 py-1 rounded-md transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              class="group relative flex items-center p-1 rounded-full text-xs font-semibold transition-all shrink-0 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               :class="isLeagueActive(league)
-                ? 'bg-amber-50 ring-2 ring-amber-500 shadow-sm' 
-                : 'hover:bg-slate-100/80'"
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)] ring-2 ring-orange-400/40' 
+                : 'bg-slate-950/80 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-cyan-400/60 shadow-xs hover:shadow-[0_0_12px_rgba(6,182,212,0.3)]'"
             >
-              <img 
-                v-if="league.logoUrl" 
-                :src="league.logoUrl" 
-                :alt="league.name + ' Logo'"
-                class="h-7 sm:h-8 max-w-[65px] sm:max-w-[85px] object-contain transition-transform duration-300 group-hover:scale-110"
-                loading="eager"
-              />
+              <span v-if="league.logoUrl" class="inline-flex items-center justify-center bg-white rounded-full px-2.5 py-0.5 shadow-xs shrink-0">
+                <img 
+                  :src="league.logoUrl" 
+                  :alt="league.name + ' Logo'"
+                  class="h-5 sm:h-6 max-w-[55px] sm:max-w-[70px] w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                  loading="eager"
+                />
+              </span>
               <span 
                 v-else 
-                class="text-xs font-black uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-800 group-hover:bg-slate-200"
+                class="text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white text-slate-900"
               >
                 {{ league.name }}
               </span>
@@ -190,21 +191,22 @@ function selectLeague(league: LeagueItem) {
               v-else
               :to="league.path"
               :title="league.fullName"
-              class="group relative flex items-center justify-center px-2.5 py-1 rounded-md transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              class="group relative flex items-center p-1 rounded-full text-xs font-semibold transition-all shrink-0 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               :class="isLeagueActive(league) 
-                ? 'bg-amber-50 ring-2 ring-amber-500 shadow-sm' 
-                : 'hover:bg-slate-100/80'"
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)] ring-2 ring-orange-400/40' 
+                : 'bg-slate-950/80 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-cyan-400/60 shadow-xs hover:shadow-[0_0_12px_rgba(6,182,212,0.3)]'"
             >
-              <img 
-                v-if="league.logoUrl" 
-                :src="league.logoUrl" 
-                :alt="league.name + ' Logo'"
-                class="h-7 sm:h-8 max-w-[65px] sm:max-w-[85px] object-contain transition-transform duration-300 group-hover:scale-110"
-                loading="eager"
-              />
+              <span v-if="league.logoUrl" class="inline-flex items-center justify-center bg-white rounded-full px-2.5 py-0.5 shadow-xs shrink-0">
+                <img 
+                  :src="league.logoUrl" 
+                  :alt="league.name + ' Logo'"
+                  class="h-5 sm:h-6 max-w-[55px] sm:max-w-[70px] w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                  loading="eager"
+                />
+              </span>
               <span 
                 v-else 
-                class="text-xs font-black uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-800 group-hover:bg-slate-200"
+                class="text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white text-slate-900"
               >
                 {{ league.name }}
               </span>
@@ -213,7 +215,7 @@ function selectLeague(league: LeagueItem) {
         </div>
 
         <!-- Track 2 (Duplicate set for seamless infinite loop) -->
-        <div class="flex items-center gap-6 sm:gap-8 shrink-0 py-1" aria-hidden="true">
+        <div class="flex items-center gap-4 sm:gap-6 shrink-0 py-1" aria-hidden="true">
           <template v-for="league in leagues" :key="'t2-' + league.id">
             <!-- Filter Mode Button -->
             <button
@@ -222,21 +224,22 @@ function selectLeague(league: LeagueItem) {
               tabindex="-1"
               @click="selectLeague(league)"
               :title="league.fullName"
-              class="group relative flex items-center justify-center px-2.5 py-1 rounded-md transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              class="group relative flex items-center p-1 rounded-full text-xs font-semibold transition-all shrink-0 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               :class="isLeagueActive(league)
-                ? 'bg-amber-50 ring-2 ring-amber-500 shadow-sm' 
-                : 'hover:bg-slate-100/80'"
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)] ring-2 ring-orange-400/40' 
+                : 'bg-slate-950/80 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-cyan-400/60 shadow-xs hover:shadow-[0_0_12px_rgba(6,182,212,0.3)]'"
             >
-              <img 
-                v-if="league.logoUrl" 
-                :src="league.logoUrl" 
-                :alt="league.name + ' Logo'"
-                class="h-7 sm:h-8 max-w-[65px] sm:max-w-[85px] object-contain transition-transform duration-300 group-hover:scale-110"
-                loading="lazy"
-              />
+              <span v-if="league.logoUrl" class="inline-flex items-center justify-center bg-white rounded-full px-2.5 py-0.5 shadow-xs shrink-0">
+                <img 
+                  :src="league.logoUrl" 
+                  :alt="league.name + ' Logo'"
+                  class="h-5 sm:h-6 max-w-[55px] sm:max-w-[70px] w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
+              </span>
               <span 
                 v-else 
-                class="text-xs font-black uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-800 group-hover:bg-slate-200"
+                class="text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white text-slate-900"
               >
                 {{ league.name }}
               </span>
@@ -248,21 +251,22 @@ function selectLeague(league: LeagueItem) {
               :to="league.path"
               tabindex="-1"
               :title="league.fullName"
-              class="group relative flex items-center justify-center px-2.5 py-1 rounded-md transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              class="group relative flex items-center p-1 rounded-full text-xs font-semibold transition-all shrink-0 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               :class="isLeagueActive(league) 
-                ? 'bg-amber-50 ring-2 ring-amber-500 shadow-sm' 
-                : 'hover:bg-slate-100/80'"
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)] ring-2 ring-orange-400/40' 
+                : 'bg-slate-950/80 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-cyan-400/60 shadow-xs hover:shadow-[0_0_12px_rgba(6,182,212,0.3)]'"
             >
-              <img 
-                v-if="league.logoUrl" 
-                :src="league.logoUrl" 
-                :alt="league.name + ' Logo'"
-                class="h-7 sm:h-8 max-w-[65px] sm:max-w-[85px] object-contain transition-transform duration-300 group-hover:scale-110"
-                loading="lazy"
-              />
+              <span v-if="league.logoUrl" class="inline-flex items-center justify-center bg-white rounded-full px-2.5 py-0.5 shadow-xs shrink-0">
+                <img 
+                  :src="league.logoUrl" 
+                  :alt="league.name + ' Logo'"
+                  class="h-5 sm:h-6 max-w-[55px] sm:max-w-[70px] w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
+              </span>
               <span 
                 v-else 
-                class="text-xs font-black uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-800 group-hover:bg-slate-200"
+                class="text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white text-slate-900"
               >
                 {{ league.name }}
               </span>

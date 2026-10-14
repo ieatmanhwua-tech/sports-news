@@ -2,8 +2,57 @@
 
 @layer base {
   body {
-    background-color: #f8fafc;
-    color: #1e293b;
+    background-color: #07090e;
+    color: #f1f5f9;
     font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
   }
+}
+
+/* Cyber-Athletic & Sports Arena Glow Utility Classes */
+.glow-orange {
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.35), 0 0 40px rgba(249, 115, 22, 0.15);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.35), 0 0 40px rgba(6, 182, 212, 0.15);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4), 0 0 40px rgba(239, 68, 68, 0.2);
+}
+
+.glow-text-orange {
+  text-shadow: 0 0 12px rgba(249, 115, 22, 0.6), 0 0 24px rgba(249, 115, 22, 0.3);
+}
+
+.glow-text-cyan {
+  text-shadow: 0 0 12px rgba(6, 182, 212, 0.6), 0 0 24px rgba(6, 182, 212, 0.3);
+}
+
+.glass-hud {
+  background: rgba(13, 19, 34, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 35px rgba(14, 165, 233, 0.08);
+}
+
+.glass-hud-orange {
+  background: rgba(13, 19, 34, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 35px rgba(249, 115, 22, 0.08);
+}
+
+/* Subtle stadium light sweep keyframe */
+@keyframes lightSweep {
+  0% { transform: translateX(-100%) rotate(25deg); opacity: 0; }
+  50% { opacity: 0.15; }
+  100% { transform: translateX(200%) rotate(25deg); opacity: 0; }
+}
+
+.animate-light-sweep {
+  animation: lightSweep 12s infinite ease-in-out;
 }

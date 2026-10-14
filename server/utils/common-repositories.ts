@@ -6,42 +6,52 @@ import type { Author, CategoryInfo, ContactSubmission } from '../../shared/types
 export class AuthorRepository {
   static async getAllAuthors(): Promise<Author[]> {
     const status = await getDatabaseStatus();
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
+    if (status.mode !== 'MYSQL') {
       return [...inMemoryStore.authors];
     }
-    const rows = await executeQuery<any>('SELECT * FROM authors ORDER BY name ASC');
-    return rows.map(r => ({
-      id: r.id,
-      slug: r.slug,
-      name: r.name,
-      bio: r.bio,
-      role: r.role,
-      email: r.email,
-      avatarUrl: r.avatar_url,
-      twitterHandle: r.twitter_handle,
-      createdAt: r.created_at
-    }));
+    try {
+      const rows = await executeQuery<any>('SELECT * FROM authors ORDER BY name ASC');
+      return rows.map(r => ({
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        bio: r.bio,
+        role: r.role,
+        email: r.email,
+        avatarUrl: r.avatar_url,
+        twitterHandle: r.twitter_handle,
+        createdAt: r.created_at
+      }));
+    } catch (err: any) {
+      console.warn('[Database] MySQL getAllAuthors failed, falling back:', err?.message);
+      return [...inMemoryStore.authors];
+    }
   }
 
   static async getAuthorBySlug(slug: string): Promise<Author | null> {
     const status = await getDatabaseStatus();
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
+    if (status.mode !== 'MYSQL') {
       return inMemoryStore.authors.find(a => a.slug === slug) || null;
     }
-    const rows = await executeQuery<any>('SELECT * FROM authors WHERE slug = ? LIMIT 1', [slug]);
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      id: r.id,
-      slug: r.slug,
-      name: r.name,
-      bio: r.bio,
-      role: r.role,
-      email: r.email,
-      avatarUrl: r.avatar_url,
-      twitterHandle: r.twitter_handle,
-      createdAt: r.created_at
-    };
+    try {
+      const rows = await executeQuery<any>('SELECT * FROM authors WHERE slug = ? LIMIT 1', [slug]);
+      if (rows.length === 0) return null;
+      const r = rows[0];
+      return {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        bio: r.bio,
+        role: r.role,
+        email: r.email,
+        avatarUrl: r.avatar_url,
+        twitterHandle: r.twitter_handle,
+        createdAt: r.created_at
+      };
+    } catch (err: any) {
+      console.warn('[Database] MySQL getAuthorBySlug failed, falling back:', err?.message);
+      return inMemoryStore.authors.find(a => a.slug === slug) || null;
+    }
   }
 }
 
@@ -50,7 +60,7 @@ export class CategoryRepository {
     const status = await getDatabaseStatus();
     const nowUtc = new Date().toISOString();
 
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
+    const runInMemory = () => {
       return CATEGORIES_REGISTRY.map(cat => {
         const count = inMemoryStore.articles.filter(a =>
           (a.primaryCategoryId === cat.slug || (a.topicIds && a.topicIds.includes(cat.slug))) &&
@@ -62,23 +72,31 @@ export class CategoryRepository {
           articleCount: count
         };
       });
+    };
+
+    if (status.mode !== 'MYSQL') {
+      return runInMemory();
     }
 
-    // MySQL mode
-    const countSql = `
-      SELECT c.slug, COUNT(DISTINCT a.id) as count
-      FROM categories c
-      LEFT JOIN articles a ON (a.primary_category_id = c.id OR EXISTS (SELECT 1 FROM article_topics at WHERE at.article_id = a.id AND at.category_id = c.id))
-        AND a.status = 'published' AND a.published_at <= NOW()
-      GROUP BY c.slug
-    `;
-    const rows = await executeQuery<{ slug: string; count: number }>(countSql);
-    const countMap = new Map(rows.map(r => [r.slug, r.count]));
+    try {
+      const countSql = `
+        SELECT c.slug, COUNT(DISTINCT a.id) as count
+        FROM categories c
+        LEFT JOIN articles a ON (a.primary_category_id = c.id OR EXISTS (SELECT 1 FROM article_topics at WHERE at.article_id = a.id AND at.category_id = c.id))
+          AND a.status = 'published' AND a.published_at <= NOW()
+        GROUP BY c.slug
+      `;
+      const rows = await executeQuery<{ slug: string; count: number }>(countSql);
+      const countMap = new Map(rows.map(r => [r.slug, r.count]));
 
-    return CATEGORIES_REGISTRY.map(cat => ({
-      ...cat,
-      articleCount: countMap.get(cat.slug) || 0
-    }));
+      return CATEGORIES_REGISTRY.map(cat => ({
+        ...cat,
+        articleCount: countMap.get(cat.slug) || 0
+      }));
+    } catch (err: any) {
+      console.warn('[Database] MySQL getAllCategoriesWithCounts failed, falling back:', err?.message);
+      return runInMemory();
+    }
   }
 
   static async getCategoryBySlug(slug: string): Promise<{ category: CategoryInfo; articleCount: number } | null> {
@@ -103,19 +121,22 @@ export class ContactRepository {
       createdAt
     };
 
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
-      inMemoryStore.contactSubmissions.unshift(submission);
-      return submission;
-    }
+    inMemoryStore.contactSubmissions.unshift(submission);
 
-    await executeQuery(
-      `INSERT INTO contact_submissions (id, name, email, subject, message, type, phone, portfolio_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        id, data.name, data.email, data.subject, data.message, data.type,
-        data.phone || null, data.portfolioUrl || null
-      ]
-    );
+    if (status.mode === 'MYSQL') {
+      try {
+        await executeQuery(
+          `INSERT INTO contact_submissions (id, name, email, subject, message, type, phone, portfolio_url, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            id, data.name, data.email, data.subject, data.message, data.type,
+            data.phone || null, data.portfolioUrl || null
+          ]
+        );
+      } catch (err: any) {
+        console.warn('[Database] MySQL contact submission mirror skipped:', err?.message);
+      }
+    }
 
     return submission;
   }
@@ -128,7 +149,7 @@ export class AuthRepository {
   static async verifyAdmin(username: string, passwordPlain: string): Promise<{ id: string; username: string; role: string } | null> {
     const status = await getDatabaseStatus();
 
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
+    const checkInMemory = async () => {
       const customUser = inMemoryStore.adminUsers.find(u => u.username === username);
       if (customUser) {
         const matches = await bcrypt.compare(passwordPlain, customUser.passwordHash);
@@ -141,20 +162,30 @@ export class AuthRepository {
         return { id: 'admin-01', username: 'admin', role: 'superadmin' };
       }
       return null;
+    };
+
+    if (status.mode !== 'MYSQL') {
+      return checkInMemory();
     }
 
-    // In MySQL mode
-    const rows = await executeQuery<any>(
-      'SELECT id, username, password_hash, role FROM admin_users WHERE username = ? OR email = ? LIMIT 1',
-      [username, username]
-    );
+    try {
+      const rows = await executeQuery<any>(
+        'SELECT id, username, password_hash, role FROM admin_users WHERE username = ? OR email = ? LIMIT 1',
+        [username, username]
+      );
 
-    if (rows.length === 0) return null;
-    const user = rows[0];
-    const valid = await bcrypt.compare(passwordPlain, user.password_hash);
-    if (!valid) return null;
+      if (rows.length === 0) {
+        return checkInMemory();
+      }
+      const user = rows[0];
+      const valid = await bcrypt.compare(passwordPlain, user.password_hash);
+      if (!valid) return null;
 
-    return { id: user.id, username: user.username, role: user.role };
+      return { id: user.id, username: user.username, role: user.role };
+    } catch (err: any) {
+      console.warn('[Database] MySQL verifyAdmin failed, checking local store:', err?.message);
+      return checkInMemory();
+    }
   }
 
   static async createAdminUser(username: string, email: string, passwordPlain: string, role = 'editor'): Promise<boolean> {
@@ -162,22 +193,26 @@ export class AuthRepository {
     const hash = await bcrypt.hash(passwordPlain, 10);
     const id = `usr-${Date.now()}`;
 
-    if (status.mode === 'DEMO' || status.mode === 'STANDALONE') {
-      inMemoryStore.adminUsers.push({
-        id,
-        username,
-        email,
-        passwordHash: hash,
-        role
-      });
-      inMemoryStore.saveToDisk();
-      return true;
+    inMemoryStore.adminUsers.push({
+      id,
+      username,
+      email,
+      passwordHash: hash,
+      role
+    });
+    inMemoryStore.saveToDisk();
+
+    if (status.mode === 'MYSQL') {
+      try {
+        await executeQuery(
+          'INSERT INTO admin_users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
+          [id, username, email, hash, role]
+        );
+      } catch (err: any) {
+        console.warn('[Database] MySQL createAdminUser mirror skipped:', err?.message);
+      }
     }
 
-    await executeQuery(
-      'INSERT INTO admin_users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
-      [id, username, email, hash, role]
-    );
     return true;
   }
 }

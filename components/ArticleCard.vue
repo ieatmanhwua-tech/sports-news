@@ -36,7 +36,7 @@ const contentTypeLabel = computed(() => {
     <!-- Card Thumbnail -->
     <NuxtLink 
       :to="`/news/${article.slug}`" 
-      class="block overflow-hidden rounded bg-slate-200 shrink-0 relative aspect-video"
+      class="block overflow-hidden rounded-xl bg-slate-800 border border-slate-700/60 shrink-0 relative aspect-video shadow-sm"
       :class="{
         'w-full': layout === 'vertical',
         'w-full sm:w-48 lg:w-56': layout === 'horizontal',
@@ -47,6 +47,8 @@ const contentTypeLabel = computed(() => {
         :src="article.featuredImageUrl" 
         :alt="article.imageAlt || article.title"
         loading="lazy"
+        referrerpolicy="no-referrer"
+        @error="(e) => ((e.target as HTMLImageElement).src = '/img/articles/pba-governors-cup-2026.webp')"
         class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
       />
     </NuxtLink>
@@ -54,26 +56,26 @@ const contentTypeLabel = computed(() => {
     <!-- Card Content -->
     <div class="flex-1 min-w-0">
       <!-- Unboxed Metadata Kicker (Anti-Slop Zero-Pill discipline) -->
-      <div class="flex items-center gap-1.5 text-xs text-slate-500 mb-1.5 flex-wrap">
+      <div class="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 flex-wrap">
         <NuxtLink 
           :to="`/${article.primaryCategoryId}`" 
-          class="font-bold text-[#D35400] hover:text-amber-700 tracking-wider uppercase text-[11px]"
+          class="font-black text-orange-400 hover:text-orange-300 tracking-wider uppercase text-[11px] drop-shadow-[0_0_6px_rgba(249,115,22,0.3)]"
         >
           {{ article.category?.name || 'Hoops' }}
         </NuxtLink>
         <template v-if="contentTypeLabel">
-          <span class="text-slate-400" aria-hidden="true">·</span>
-          <span class="font-medium text-slate-700 italic text-[11px]">{{ contentTypeLabel }}</span>
+          <span class="text-slate-500" aria-hidden="true">·</span>
+          <span class="font-medium text-slate-300 italic text-[11px]">{{ contentTypeLabel }}</span>
         </template>
-        <span class="text-slate-400" aria-hidden="true">·</span>
-        <time :datetime="article.publishedAt" class="text-slate-500 text-[11px]">
+        <span class="text-slate-500" aria-hidden="true">·</span>
+        <time :datetime="article.publishedAt" class="text-slate-400 text-[11px]">
           {{ formatRelativeTime(article.publishedAt) }}
         </time>
       </div>
 
       <!-- Article Title -->
       <h3 
-        class="font-bold text-slate-900 group-hover:text-[#D35400] transition-colors leading-snug line-clamp-2"
+        class="font-bold text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-2"
         :class="{
           'text-base md:text-lg': layout === 'vertical' || layout === 'horizontal',
           'text-sm': layout === 'compact'
@@ -87,17 +89,17 @@ const contentTypeLabel = computed(() => {
       <!-- Excerpt (optional) -->
       <p 
         v-if="showExcerpt && layout !== 'compact' && article.excerpt" 
-        class="mt-1.5 text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed"
+        class="mt-1.5 text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed"
       >
         {{ article.excerpt }}
       </p>
 
       <!-- Byline -->
-      <div v-if="layout !== 'compact' && article.author" class="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
+      <div v-if="layout !== 'compact' && article.author" class="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
         <span>By</span>
         <NuxtLink 
           :to="`/authors/${article.author.slug}`" 
-          class="font-medium text-slate-800 hover:text-[#D35400] hover:underline"
+          class="font-medium text-slate-200 hover:text-orange-400 hover:underline"
         >
           {{ article.author.name }}
         </NuxtLink>

@@ -2,13 +2,9 @@ import { ArticleRepository } from '../utils/repository';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
-  const siteUrl = (config.public.siteUrl || '').replace(/\/$/, '');
-  if (!siteUrl) {
-    setResponseHeader(event, 'Content-Type', 'text/xml; charset=utf-8');
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Site URL (NUXT_PUBLIC_SITE_URL) is not configured -->
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"></urlset>`;
-  }
+  const host = getRequestHeader(event, 'host');
+  const proto = getRequestHeader(event, 'x-forwarded-proto') || 'https';
+  const siteUrl = (config.public.siteUrl || (host ? `${proto}://${host}` : 'https://tipoffph.com')).replace(/\/$/, '');
 
   // Articles published within last 48 hours
   const { articles } = await ArticleRepository.getPublicArticles({ limit: 1000 });

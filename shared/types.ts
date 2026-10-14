@@ -81,7 +81,9 @@ export interface GameScore {
   eventName?: string; // Complete league tournament / event name, e.g. "PBA Governors' Cup 2026 - Quarterfinals Game 2"
   stage?: string; // e.g. "North Quarterfinals", "Elimination Round", "Group Stage"
   homeTeam: string;
+  homeTeamLogo?: string;
   awayTeam: string;
+  awayTeamLogo?: string;
   homeScore?: number;
   awayScore?: number;
   status: 'upcoming' | 'live' | 'final';

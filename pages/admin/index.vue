@@ -62,9 +62,9 @@ useHead({
     <!-- Admin Top Nav Bar -->
     <div class="bg-[#1e293b] text-slate-300 rounded-lg px-4 sm:px-6 h-12 flex items-center justify-between text-xs shadow-sm">
       <div class="flex items-center gap-4">
-        <NuxtLink to="/admin" class="flex items-center gap-1.5 font-bold text-white hover:text-[#E67E22] transition-colors">
-          <span class="w-5 h-5 rounded bg-[#E67E22] text-slate-950 font-black text-[10px] flex items-center justify-center">TP</span>
-          <span>TipOffPh CMS</span>
+        <NuxtLink to="/admin" class="flex items-center gap-2 font-bold text-white hover:text-[#E67E22] transition-colors">
+          <img src="/img/TipOffPh_logo.png" alt="TipOffPh" class="h-5 w-auto object-contain" />
+          <span>CMS</span>
         </NuxtLink>
         <span class="text-slate-600">/</span>
         <nav class="flex items-center gap-3">
@@ -84,38 +84,38 @@ useHead({
     </div>
 
     <!-- Admin Header Bar -->
-    <header class="bg-white border border-slate-200 rounded-lg p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <header class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-[0_4px_35px_rgba(0,0,0,0.7)] ring-1 ring-cyan-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded bg-[#E67E22] text-slate-950 font-black text-lg flex items-center justify-center">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-slate-950 font-black text-lg flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.4)]">
           TP
         </div>
         <div>
-          <h1 class="text-xl font-black text-slate-900">Editorial Dashboard</h1>
-          <p class="text-xs text-slate-500">
-            Welcome, <strong>{{ user?.username || 'Editor' }}</strong> (Role: {{ user?.role || 'Staff' }})
+          <h1 class="text-xl font-black text-white tracking-tight drop-shadow-sm">Editorial Dashboard</h1>
+          <p class="text-xs text-slate-400">
+            Welcome, <strong class="text-white">{{ user?.username || 'Editor' }}</strong> (Role: {{ user?.role || 'Staff' }})
           </p>
         </div>
       </div>
 
-      <div class="flex items-center gap-3 text-xs">
+      <div class="flex items-center gap-2.5 text-xs flex-wrap">
         <NuxtLink 
           to="/admin/post"
-          class="px-3.5 py-2 bg-[#E67E22] hover:bg-amber-600 text-white font-bold rounded flex items-center gap-1.5 transition-colors shadow-sm"
+          class="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black rounded-xl flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(249,115,22,0.4)]"
         >
           <PenSquare class="w-4 h-4" /> Story Publisher
         </NuxtLink>
 
         <NuxtLink 
           to="/admin/settings"
-          class="px-3 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded flex items-center gap-1.5 transition-colors"
+          class="px-3.5 py-2 border border-slate-700/80 bg-slate-900/80 hover:bg-slate-800 text-slate-200 font-bold rounded-xl flex items-center gap-1.5 transition-colors"
         >
-          <Settings class="w-4 h-4" /> DB &amp; Hostinger
+          <Settings class="w-4 h-4 text-cyan-400" /> DB &amp; Hostinger
         </NuxtLink>
 
         <button 
           type="button" 
           @click="handleLogout"
-          class="px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 font-semibold rounded flex items-center gap-1 transition-colors"
+          class="px-3.5 py-2 border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold rounded-xl flex items-center gap-1 transition-colors"
         >
           <LogOut class="w-3.5 h-3.5" /> Logout
         </button>
@@ -124,18 +124,18 @@ useHead({
 
     <!-- Database Status Card -->
     <div 
-      class="rounded-lg p-4 text-xs border flex items-center justify-between gap-4"
+      class="rounded-xl p-4 text-xs border flex items-center justify-between gap-4 backdrop-blur-md"
       :class="{
-        'bg-slate-50 border-slate-200 text-slate-800': dbStatus?.mode !== 'MYSQL' && dbStatus?.mode !== 'ERROR',
-        'bg-emerald-50 border-emerald-200 text-emerald-900': dbStatus?.mode === 'MYSQL',
-        'bg-red-50 border-red-200 text-red-900': dbStatus?.mode === 'ERROR'
+        'bg-slate-900/90 border-slate-700/80 text-slate-300': dbStatus?.mode !== 'MYSQL' && dbStatus?.mode !== 'ERROR',
+        'bg-emerald-950/60 border-emerald-500/40 text-emerald-200': dbStatus?.mode === 'MYSQL',
+        'bg-red-950/60 border-red-500/40 text-red-200': dbStatus?.mode === 'ERROR'
       }"
     >
       <div class="flex items-center gap-2.5">
-        <Database class="w-4 h-4 shrink-0" />
+        <Database class="w-4 h-4 shrink-0 text-cyan-400" />
         <div>
-          <span class="font-bold uppercase tracking-wider mr-2 text-[10px] px-1.5 py-0.5 rounded"
-            :class="dbStatus?.mode === 'MYSQL' ? 'bg-emerald-200 text-emerald-950' : 'bg-slate-200 text-slate-900'"
+          <span class="font-black uppercase tracking-wider mr-2 text-[10px] px-2 py-0.5 rounded-full"
+            :class="dbStatus?.mode === 'MYSQL' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-300 border border-slate-700'"
           >
             {{ dbStatus?.mode === 'MYSQL' ? 'MYSQL LIVE' : 'ACTIVE DATA ENGINE' }}
           </span>
@@ -143,28 +143,28 @@ useHead({
         </div>
       </div>
 
-      <NuxtLink to="/admin/settings" class="underline font-bold shrink-0">
+      <NuxtLink to="/admin/settings" class="text-amber-400 hover:text-amber-300 underline font-bold shrink-0">
         Hostinger Setup Details &rarr;
       </NuxtLink>
     </div>
 
     <!-- Quick Stats Metric Grid -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Articles</div>
-        <div class="text-2xl font-black text-slate-900 mt-1">{{ articles.length }}</div>
+      <div class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
+        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Articles</div>
+        <div class="text-2xl font-black text-white mt-1">{{ articles.length }}</div>
       </div>
-      <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-        <div class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Published</div>
-        <div class="text-2xl font-black text-emerald-700 mt-1">{{ publishedCount }}</div>
+      <div class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
+        <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Published</div>
+        <div class="text-2xl font-black text-emerald-300 mt-1">{{ publishedCount }}</div>
       </div>
-      <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-        <div class="text-xs font-bold text-amber-600 uppercase tracking-wider">Drafts</div>
-        <div class="text-2xl font-black text-amber-700 mt-1">{{ draftCount }}</div>
+      <div class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
+        <div class="text-xs font-bold text-amber-400 uppercase tracking-wider">Drafts</div>
+        <div class="text-2xl font-black text-amber-300 mt-1">{{ draftCount }}</div>
       </div>
-      <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-        <div class="text-xs font-bold text-sky-600 uppercase tracking-wider">Scheduled (UTC)</div>
-        <div class="text-2xl font-black text-sky-700 mt-1">{{ scheduledCount }}</div>
+      <div class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
+        <div class="text-xs font-bold text-cyan-400 uppercase tracking-wider">Scheduled (UTC)</div>
+        <div class="text-2xl font-black text-cyan-300 mt-1">{{ scheduledCount }}</div>
       </div>
     </div>
 
@@ -213,7 +213,7 @@ useHead({
             to="/admin/post?template=mpbl"
             class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/60 rounded-lg p-3.5 flex items-start gap-3 transition-all group"
           >
-            <img src="/img/mpbl.png" alt="MPBL" class="w-8 h-8 object-contain shrink-0 group-hover:scale-110 transition-transform" />
+            <img src="/img/mpbl.png" alt="MPBL" class="w-8 h-8 object-contain shrink-0 bg-white p-1 rounded-lg border border-slate-200 group-hover:scale-110 transition-transform shadow-xs" />
             <div>
               <div class="font-bold text-white group-hover:text-amber-400 flex items-center gap-1 transition-colors">
                 <span>MPBL Playoff Bracket</span>
@@ -230,7 +230,7 @@ useHead({
             to="/admin/post?template=pba"
             class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/60 rounded-lg p-3.5 flex items-start gap-3 transition-all group"
           >
-            <img src="/img/pba.png" alt="PBA" class="w-8 h-8 object-contain shrink-0 group-hover:scale-110 transition-transform" />
+            <img src="/img/pba.png" alt="PBA" class="w-8 h-8 object-contain shrink-0 bg-white p-1 rounded-lg border border-slate-200 group-hover:scale-110 transition-transform shadow-xs" />
             <div>
               <div class="font-bold text-white group-hover:text-amber-400 flex items-center gap-1 transition-colors">
                 <span>PBA Game Recaps</span>
@@ -265,13 +265,13 @@ useHead({
     </section>
 
     <!-- Recent Editorial Queue Table -->
-    <section class="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-      <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
-          <FileText class="w-4 h-4 text-[#E67E22]" />
-          Editorial Queue &amp; Articles
+    <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-6 shadow-[0_4px_30px_rgba(0,0,0,0.6)] ring-1 ring-cyan-500/20">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+        <h2 class="text-base font-black text-white flex items-center gap-2 drop-shadow-sm">
+          <FileText class="w-4 h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+          <span>Editorial Queue &amp; Articles</span>
         </h2>
-        <NuxtLink to="/admin/articles" class="text-xs text-[#E67E22] hover:underline font-bold">
+        <NuxtLink to="/admin/articles" class="text-xs text-orange-400 hover:text-orange-300 hover:underline font-bold">
           Manage All &rarr;
         </NuxtLink>
       </div>
@@ -279,7 +279,7 @@ useHead({
       <div class="overflow-x-auto">
         <table class="w-full text-left text-xs border-collapse">
           <thead>
-            <tr class="border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wider">
+            <tr class="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
               <th class="py-2.5 px-3">Title &amp; Category</th>
               <th class="py-2.5 px-3">Status</th>
               <th class="py-2.5 px-3">Type</th>
@@ -287,32 +287,32 @@ useHead({
               <th class="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="art in articles.slice(0, 8)" :key="art.id" class="hover:bg-slate-50/80">
+          <tbody class="divide-y divide-slate-800/80">
+            <tr v-for="art in articles.slice(0, 8)" :key="art.id" class="hover:bg-slate-800/50 transition-colors">
               <td class="py-3 px-3">
-                <div class="font-bold text-slate-900 truncate max-w-md">{{ art.title }}</div>
+                <div class="font-bold text-white truncate max-w-md">{{ art.title }}</div>
                 <div class="text-[11px] text-slate-400 mt-0.5">/news/{{ art.slug }}</div>
               </td>
               <td class="py-3 px-3">
                 <span 
-                  class="font-bold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded"
+                  class="font-black uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-full border"
                   :class="{
-                    'bg-emerald-100 text-emerald-800': art.status === 'published',
-                    'bg-amber-100 text-amber-800': art.status === 'draft',
-                    'bg-sky-100 text-sky-800': art.status === 'scheduled',
-                    'bg-slate-100 text-slate-600': art.status === 'archived'
+                    'bg-emerald-500/20 text-emerald-300 border-emerald-500/40': art.status === 'published',
+                    'bg-amber-500/20 text-amber-300 border-amber-500/40': art.status === 'draft',
+                    'bg-sky-500/20 text-sky-300 border-sky-500/40': art.status === 'scheduled',
+                    'bg-slate-800 text-slate-400 border-slate-700': art.status === 'archived'
                   }"
                 >
                   {{ art.status }}
                 </span>
               </td>
-              <td class="py-3 px-3 capitalize text-slate-600">{{ art.contentType }}</td>
-              <td class="py-3 px-3 text-slate-500 font-mono text-[11px]">{{ art.publishedAt }}</td>
+              <td class="py-3 px-3 capitalize text-slate-300">{{ art.contentType }}</td>
+              <td class="py-3 px-3 text-slate-400 font-mono text-[11px]">{{ art.publishedAt }}</td>
               <td class="py-3 px-3 text-right space-x-2">
-                <NuxtLink :to="`/admin/articles/${art.id}`" class="text-[#D35400] font-bold hover:underline">
+                <NuxtLink :to="`/admin/articles/${art.id}`" class="text-orange-400 font-bold hover:underline">
                   Edit
                 </NuxtLink>
-                <NuxtLink :to="`/news/${art.slug}`" target="_blank" class="text-slate-400 hover:text-slate-700">
+                <NuxtLink :to="`/news/${art.slug}`" target="_blank" class="text-slate-400 hover:text-white">
                   Preview
                 </NuxtLink>
               </td>

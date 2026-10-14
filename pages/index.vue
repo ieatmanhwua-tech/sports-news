@@ -3,8 +3,10 @@ import type { Article, GameScore } from '~/shared/types';
 import BreakingNewsBanner from '~/components/BreakingNewsBanner.vue';
 import LeadArticleCard from '~/components/LeadArticleCard.vue';
 import ArticleCard from '~/components/ArticleCard.vue';
+import LatestNews from '~/components/LatestNews.vue';
 import EditorialSidebar from '~/components/EditorialSidebar.vue';
 import AdUnit from '~/components/AdUnit.vue';
+import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
 import { ArrowRight, Flame, Trophy, Globe, GraduationCap, ShieldAlert } from 'lucide-vue-next';
 
 // Server-side asynchronous data fetching with Nuxt 3 useAsyncData
@@ -41,12 +43,75 @@ const { data: homeData, error } = await useAsyncData('home-feed', async () => {
   };
 });
 
+const config = useRuntimeConfig();
+const siteUrl = computed(() => (config.public.siteUrl || 'https://tipoffph.com').replace(/\/$/, ''));
+const canonicalUrl = computed(() => `${siteUrl.value}/`);
+
+// Schema.org Structured Data: NewsMediaOrganization & WebSite with SearchAction
+const homeSchema = computed(() => {
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'NewsMediaOrganization',
+      'name': 'TipOffPh',
+      'alternateName': 'TipOff Philippines Basketball',
+      'url': siteUrl.value,
+      'logo': {
+        '@type': 'ImageObject',
+        'url': `${siteUrl.value}/img/TipOffPh_logo.png`,
+        'width': 600,
+        'height': 160
+      },
+      'description': 'Independent Philippine basketball news publication covering PBA, MPBL, UAAP, NCAA, Gilas Pilipinas, live scores, schedules, and grassroots hoops.',
+      'foundingDate': '2024',
+      'address': {
+        '@type': 'PostalAddress',
+        'addressLocality': 'Manila',
+        'addressRegion': 'Metro Manila',
+        'addressCountry': 'PH'
+      },
+      'publishingPrinciples': `${siteUrl.value}/editorial-policy`,
+      'correctionsPolicy': `${siteUrl.value}/corrections-policy`,
+      'diversityPolicy': `${siteUrl.value}/editorial-policy`,
+      'ethicsPolicy': `${siteUrl.value}/editorial-policy`
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      'name': 'TipOffPh',
+      'url': siteUrl.value,
+      'potentialAction': {
+        '@type': 'SearchAction',
+        'target': `${siteUrl.value}/search?q={search_term_string}`,
+        'query-input': 'required name=search_term_string'
+      }
+    }
+  ];
+});
+
 useHead({
   title: 'TipOffPh - Philippine Basketball News, PBA Scores & Gilas Updates',
   meta: [
-    { name: 'description', content: 'Your primary source for Philippine basketball news: PBA Philippine Cup, MPBL standings, UAAP, NCAA, Gilas Pilipinas updates, and global hoops.' },
+    { name: 'description', content: 'Your primary source for Philippine basketball news: PBA Philippine Cup, MPBL standings, UAAP, NCAA, Gilas Pilipinas updates, live scores, and global hoops.' },
     { property: 'og:title', content: 'TipOffPh - Philippine Basketball News, PBA Scores & Gilas Updates' },
-    { property: 'og:description', content: 'Your primary source for Philippine basketball news: PBA Philippine Cup, MPBL standings, UAAP, NCAA, Gilas Pilipinas updates, and global hoops.' }
+    { property: 'og:description', content: 'Your primary source for Philippine basketball news: PBA Philippine Cup, MPBL standings, UAAP, NCAA, Gilas Pilipinas updates, live scores, and global hoops.' },
+    { property: 'og:type', content: 'website' },
+    { property: 'og:url', content: canonicalUrl.value },
+    { property: 'og:image', content: `${siteUrl.value}/img/TipOffPh_logo.png` },
+    { property: 'og:site_name', content: 'TipOffPh' },
+    { name: 'twitter:card', content: 'summary_large_image' },
+    { name: 'twitter:title', content: 'TipOffPh - Philippine Basketball News, PBA Scores & Gilas Updates' },
+    { name: 'twitter:description', content: 'Your primary source for Philippine basketball news: PBA, MPBL, UAAP, NCAA, Gilas Pilipinas, and live scores.' },
+    { name: 'twitter:image', content: `${siteUrl.value}/img/TipOffPh_logo.png` }
+  ],
+  link: [
+    { rel: 'canonical', href: canonicalUrl.value }
+  ],
+  script: [
+    {
+      type: 'application/ld+json' as any,
+      innerHTML: JSON.stringify(homeSchema.value)
+    }
   ]
 });
 </script>
@@ -81,27 +146,14 @@ useHead({
           <LeadArticleCard :article="homeData.featured" />
         </section>
 
-        <!-- Latest News Stream (Chronological order) -->
-        <section class="bg-white border border-slate-200 rounded-lg p-5 sm:p-6 shadow-sm">
-          <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-6">
-            <h2 class="text-lg font-black tracking-tight text-slate-900 flex items-center gap-2">
-              <span class="w-2.5 h-2.5 bg-[#E67E22] rounded-full"></span>
-              Latest News
-            </h2>
-            <NuxtLink to="/latest-news" class="text-xs font-bold text-[#E67E22] hover:text-amber-700 flex items-center gap-1">
-              All Stories <ArrowRight class="w-3.5 h-3.5" />
-            </NuxtLink>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <ArticleCard 
-              v-for="article in (homeData?.latest || []).filter(a => a.id !== homeData?.featured?.id).slice(0, 4)" 
-              :key="article.id" 
-              :article="article"
-              layout="vertical"
-            />
-          </div>
-        </section>
+        <!-- Latest News Component with Thumbnails, Excerpts, and Category Filters -->
+        <LatestNews 
+          :exclude-id="homeData?.featured?.id" 
+          :limit="4"
+          :show-filters="true"
+          title="Latest News"
+          subtitle="Continuous real-time stream of Philippine basketball updates"
+        />
 
         <!-- Mid-page In-Feed Ad -->
         <AdUnit format="banner" class="sm:hidden" />
@@ -109,13 +161,13 @@ useHead({
         <!-- Dual Column: PBA & MPBL News -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <!-- PBA News Section -->
-          <section class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-            <div class="flex items-center justify-between border-b border-slate-200 pb-2.5 mb-4">
-              <h3 class="font-black text-sm uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                <Trophy class="w-4 h-4 text-[#E67E22]" />
-                PBA Coverage
+          <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-orange-500/50 rounded-2xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-4">
+              <h3 class="font-black text-sm uppercase tracking-wider text-white flex items-center gap-1.5 drop-shadow-sm">
+                <Trophy class="w-4 h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.5)]" />
+                <span>PBA Coverage</span>
               </h3>
-              <NuxtLink to="/pba-news" class="text-xs font-bold text-[#E67E22] hover:underline">
+              <NuxtLink to="/pba-news" class="text-xs font-bold text-orange-400 hover:text-orange-300 hover:underline">
                 More PBA &rarr;
               </NuxtLink>
             </div>
@@ -132,13 +184,13 @@ useHead({
           </section>
 
           <!-- MPBL News Section -->
-          <section class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-            <div class="flex items-center justify-between border-b border-slate-200 pb-2.5 mb-4">
-              <h3 class="font-black text-sm uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                <Flame class="w-4 h-4 text-amber-500" />
-                MPBL Updates
+          <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-amber-500/50 rounded-2xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-4">
+              <h3 class="font-black text-sm uppercase tracking-wider text-white flex items-center gap-1.5 drop-shadow-sm">
+                <Flame class="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
+                <span>MPBL Updates</span>
               </h3>
-              <NuxtLink to="/mpbl-news" class="text-xs font-bold text-[#E67E22] hover:underline">
+              <NuxtLink to="/mpbl-news" class="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline">
                 More MPBL &rarr;
               </NuxtLink>
             </div>
@@ -156,18 +208,18 @@ useHead({
         </div>
 
         <!-- Collegiate & Grassroots Section (UAAP & NCAA) -->
-        <section class="bg-white border border-slate-200 rounded-lg p-5 sm:p-6 shadow-sm">
-          <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-6">
-            <h2 class="text-base font-black tracking-tight text-slate-900 flex items-center gap-2">
-              <GraduationCap class="w-5 h-5 text-[#E67E22]" />
-              Collegiate &amp; Grassroots (UAAP &amp; NCAA)
+        <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-cyan-500/40 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
+            <h2 class="text-base font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
+              <GraduationCap class="w-5 h-5 text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
+              <span>Collegiate &amp; Grassroots (UAAP &amp; NCAA)</span>
             </h2>
-            <NuxtLink to="/uaap-basketball" class="text-xs font-bold text-[#E67E22] hover:underline">
+            <NuxtLink to="/uaap-basketball" class="text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline">
               Collegiate Hub &rarr;
             </NuxtLink>
           </div>
 
-          <div class="space-y-4 divide-y divide-slate-100">
+          <div class="space-y-4 divide-y divide-slate-800/80">
             <ArticleCard 
               v-for="art in homeData?.collegiate || []" 
               :key="art.id" 
@@ -179,13 +231,13 @@ useHead({
         </section>
 
         <!-- Gilas Pilipinas & International Section -->
-        <section class="bg-white border border-slate-200 rounded-lg p-5 sm:p-6 shadow-sm">
-          <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-6">
-            <h2 class="text-base font-black tracking-tight text-slate-900 flex items-center gap-2">
-              <Globe class="w-5 h-5 text-blue-600" />
-              Gilas Pilipinas &amp; Global Pinoys
+        <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-blue-500/40 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
+            <h2 class="text-base font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
+              <Globe class="w-5 h-5 text-blue-400 drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]" />
+              <span>Gilas Pilipinas &amp; Global Pinoys</span>
             </h2>
-            <NuxtLink to="/gilas-pilipinas" class="text-xs font-bold text-[#E67E22] hover:underline">
+            <NuxtLink to="/gilas-pilipinas" class="text-xs font-bold text-blue-400 hover:text-blue-300 hover:underline">
               Gilas Hub &rarr;
             </NuxtLink>
           </div>

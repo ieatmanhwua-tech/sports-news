@@ -1,15 +1,15 @@
 export default defineEventHandler((event) => {
   const config = useRuntimeConfig();
-  const siteUrl = (config.public.siteUrl || '').replace(/\/$/, '');
+  const host = getRequestHeader(event, 'host');
+  const proto = getRequestHeader(event, 'x-forwarded-proto') || 'https';
+  const siteUrl = (config.public.siteUrl || (host ? `${proto}://${host}` : 'https://tipoffph.com')).replace(/\/$/, '');
 
   setResponseHeader(event, 'Content-Type', 'text/plain; charset=utf-8');
 
   return `User-agent: *
-Disallow: /admin/
-Disallow: /search
-Disallow: /api/
+Disallow: /
 
-Sitemap: ${siteUrl}/sitemap.xml
-Sitemap: ${siteUrl}/news-sitemap.xml
+User-agent: Googlebot
+Disallow: /
 `;
 });

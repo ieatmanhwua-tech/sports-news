@@ -4,7 +4,8 @@ import type { Article, ContentType } from '~/shared/types';
 import ArticleCard from '~/components/ArticleCard.vue';
 import EditorialSidebar from '~/components/EditorialSidebar.vue';
 import AdUnit from '~/components/AdUnit.vue';
-import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-vue-next';
+import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
+import { ChevronLeft, ChevronRight, FileQuestion, Tv } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -76,57 +77,66 @@ function handleFilter(type: ContentType | 'all') {
 </script>
 
 <template>
-  <div>
+  <div class="space-y-6">
     <!-- Quick League Navigation Bar -->
     <LeagueFilterBar mode="navigate" class="mb-6" />
 
-    <!-- Archive Category Header -->
-    <header class="bg-white border border-slate-200 rounded-lg p-6 sm:p-8 mb-8 shadow-sm">
-      <div class="max-w-3xl">
-        <div class="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-[#D35400]">
+    <!-- Archive Category Header (Dark Arena Glassmorphic) -->
+    <header class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-6 sm:p-8 mb-6 shadow-[0_4px_35px_rgba(0,0,0,0.7)] ring-1 ring-cyan-500/20 relative overflow-hidden">
+      <div class="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-orange-500/10 blur-[90px] pointer-events-none" />
+      <div class="max-w-3xl relative z-10">
+        <div class="flex items-center gap-2 mb-2 text-xs font-black uppercase tracking-wider text-orange-400 drop-shadow-sm">
           <span>Archive Feed</span>
-          <span class="text-slate-300">·</span>
+          <span class="text-slate-600">·</span>
           <span>{{ category.sectionGroup.replace('-', ' ') }}</span>
         </div>
-        <h1 class="text-2xl sm:text-4xl font-black text-slate-950 tracking-tight">
+        <h1 class="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-sm">
           {{ category.name }}
         </h1>
-        <p class="mt-3 text-sm sm:text-base text-slate-600 leading-relaxed">
+        <p class="mt-3 text-sm sm:text-base text-slate-300 leading-relaxed">
           {{ category.description }}
         </p>
 
-        <!-- Functional Filter Tabs (Buttons allowed for interactive filtering) -->
-        <div class="mt-6 flex flex-wrap items-center gap-2 pt-4 border-t border-slate-100 text-xs">
-          <span class="text-slate-500 font-medium mr-2">Filter content:</span>
+        <!-- Functional Filter Tabs -->
+        <div class="mt-6 flex flex-wrap items-center gap-2 pt-4 border-t border-slate-800 text-xs">
+          <span class="text-slate-400 font-bold mr-2">Filter content:</span>
           <button 
             type="button" 
             @click="handleFilter('all')"
-            class="px-3 py-1.5 rounded font-medium transition-colors"
-            :class="selectedContentType === 'all' ? 'bg-[#E67E22] text-white shadow-sm font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="selectedContentType === 'all' 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
           >
             All Stories
           </button>
           <button 
             type="button" 
             @click="handleFilter('news')"
-            class="px-3 py-1.5 rounded font-medium transition-colors"
-            :class="selectedContentType === 'news' ? 'bg-[#E67E22] text-white shadow-sm font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="selectedContentType === 'news' 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
           >
             Reported News
           </button>
           <button 
             type="button" 
             @click="handleFilter('rumor')"
-            class="px-3 py-1.5 rounded font-medium transition-colors"
-            :class="selectedContentType === 'rumor' ? 'bg-[#E67E22] text-white shadow-sm font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="selectedContentType === 'rumor' 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
           >
             Trade Rumors
           </button>
           <button 
             type="button" 
             @click="handleFilter('editorial')"
-            class="px-3 py-1.5 rounded font-medium transition-colors"
-            :class="selectedContentType === 'editorial' ? 'bg-[#E67E22] text-white shadow-sm font-bold' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="selectedContentType === 'editorial' 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
           >
             Editorials
           </button>
@@ -134,12 +144,40 @@ function handleFilter(type: ContentType | 'all') {
       </div>
     </header>
 
+    <!-- Live PH Sports Callout for PBA / MPBL pages -->
+    <div 
+      v-if="categorySlug === 'pba-news' || categorySlug === 'mpbl-news'"
+      class="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/90 via-slate-900/90 to-red-950/90 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg border border-red-500/40 backdrop-blur-xl"
+    >
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-600/30 border border-red-500/50 flex items-center justify-center text-amber-300 shrink-0 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
+          <Tv class="w-5 h-5 text-red-400" />
+        </div>
+        <div>
+          <h2 class="text-sm font-black text-white flex items-center gap-2">
+            <span>Official Live Scores &amp; Video Streams Available</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">Live</span>
+          </h2>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Follow {{ category.name }} games in real-time with quarter clocks, live scores &amp; match signals.
+          </p>
+        </div>
+      </div>
+      <NuxtLink
+        to="/local-sports"
+        class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-xs font-black rounded-xl transition-all shadow-[0_0_15px_rgba(239,68,68,0.4)] shrink-0 self-start sm:self-auto"
+      >
+        <span>Open Live Sports Hub</span>
+        <span>&rarr;</span>
+      </NuxtLink>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
       <!-- Article List Column -->
       <div class="lg:col-span-8">
         <!-- If Articles Exist -->
         <div v-if="articles.length > 0" class="space-y-6">
-          <div class="bg-white border border-slate-200 rounded-lg p-6 shadow-sm divide-y divide-slate-100">
+          <div class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] divide-y divide-slate-800/80 ring-1 ring-cyan-500/20">
             <ArticleCard 
               v-for="art in articles" 
               :key="art.id" 
@@ -150,48 +188,48 @@ function handleFilter(type: ContentType | 'all') {
           </div>
 
           <!-- Crawlable Pagination with Real Anchor Links -->
-          <nav v-if="totalPages > 1" class="flex items-center justify-between border-t border-slate-200 pt-6 px-2" aria-label="Pagination">
+          <nav v-if="totalPages > 1" class="flex items-center justify-between border-t border-slate-800/80 pt-6 px-2" aria-label="Pagination">
             <div>
               <NuxtLink 
                 v-if="pageNum > 1"
                 :to="pageNum === 2 ? category.path : `${category.path}?page=${pageNum - 1}`"
-                class="inline-flex items-center gap-1 px-3 py-2 border border-slate-300 rounded text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 px-3.5 py-2 border border-slate-700/80 rounded-xl text-xs font-bold text-slate-200 bg-slate-900/90 hover:bg-slate-800 hover:text-white transition-all shadow-sm"
               >
-                <ChevronLeft class="w-4 h-4" /> Previous
+                <ChevronLeft class="w-4 h-4 text-orange-400" /> Previous
               </NuxtLink>
             </div>
 
-            <div class="text-xs text-slate-500">
-              Page <span class="font-bold text-slate-900">{{ pageNum }}</span> of <span class="font-bold text-slate-900">{{ totalPages }}</span>
-              <span class="ml-1 text-slate-400">({{ total }} total stories)</span>
+            <div class="text-xs text-slate-400">
+              Page <span class="font-black text-white">{{ pageNum }}</span> of <span class="font-black text-white">{{ totalPages }}</span>
+              <span class="ml-1 text-slate-500">({{ total }} total stories)</span>
             </div>
 
             <div>
               <NuxtLink 
                 v-if="pageNum < totalPages"
                 :to="`${category.path}?page=${pageNum + 1}`"
-                class="inline-flex items-center gap-1 px-3 py-2 border border-slate-300 rounded text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 px-3.5 py-2 border border-slate-700/80 rounded-xl text-xs font-bold text-slate-200 bg-slate-900/90 hover:bg-slate-800 hover:text-white transition-all shadow-sm"
               >
-                Next <ChevronRight class="w-4 h-4" />
+                Next <ChevronRight class="w-4 h-4 text-orange-400" />
               </NuxtLink>
             </div>
           </nav>
         </div>
 
         <!-- Honest Empty State with Noindex notice -->
-        <div v-else class="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm">
-          <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div v-else class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-12 text-center shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
+          <div class="w-12 h-12 bg-slate-800/80 border border-slate-700 text-orange-400 rounded-full flex items-center justify-center mx-auto mb-4 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]">
             <FileQuestion class="w-6 h-6" />
           </div>
-          <h2 class="text-lg font-bold text-slate-800">No Published Stories in This Section Yet</h2>
-          <p class="mt-2 text-sm text-slate-500 max-w-md mx-auto">
-            Our editorial beat reporters are actively curating and preparing verified coverage for <strong class="text-slate-700">{{ category.name }}</strong>. Check back soon for game recaps and updates.
+          <h2 class="text-lg font-bold text-white">No Published Stories in This Section Yet</h2>
+          <p class="mt-2 text-sm text-slate-400 max-w-md mx-auto">
+            Our editorial beat reporters are actively curating and preparing verified coverage for <strong class="text-orange-400">{{ category.name }}</strong>. Check back soon for game recaps and updates.
           </p>
           <div class="mt-6 flex justify-center gap-3">
-            <NuxtLink to="/latest-news" class="px-4 py-2 bg-[#E67E22] text-white font-bold text-xs rounded hover:bg-amber-600 transition-colors">
+            <NuxtLink to="/latest-news" class="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-[0_0_15px_rgba(249,115,22,0.4)] transition-all">
               Explore Latest News
             </NuxtLink>
-            <NuxtLink to="/" class="px-4 py-2 border border-slate-300 text-slate-700 font-semibold text-xs rounded hover:bg-slate-50 transition-colors">
+            <NuxtLink to="/" class="px-4 py-2 border border-slate-700/80 bg-slate-900/80 text-slate-200 hover:text-white hover:bg-slate-800 font-bold text-xs rounded-xl transition-colors">
               Return Home
             </NuxtLink>
           </div>

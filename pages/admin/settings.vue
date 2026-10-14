@@ -115,9 +115,9 @@ useHead({
     <!-- Admin Top Nav Bar -->
     <div class="bg-[#1e293b] text-slate-300 rounded-lg px-4 sm:px-6 h-12 flex items-center justify-between text-xs shadow-sm">
       <div class="flex items-center gap-4">
-        <NuxtLink to="/admin" class="flex items-center gap-1.5 font-bold text-white hover:text-[#E67E22] transition-colors">
-          <span class="w-5 h-5 rounded bg-[#E67E22] text-slate-950 font-black text-[10px] flex items-center justify-center">TP</span>
-          <span>TipOffPh CMS</span>
+        <NuxtLink to="/admin" class="flex items-center gap-2 font-bold text-white hover:text-[#E67E22] transition-colors">
+          <img src="/img/TipOffPh_logo.png" alt="TipOffPh" class="h-5 w-auto object-contain" />
+          <span>CMS</span>
         </NuxtLink>
         <span class="text-slate-600">/</span>
         <nav class="flex items-center gap-3">

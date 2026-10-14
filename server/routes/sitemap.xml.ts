@@ -3,13 +3,9 @@ import { CategoryRepository } from '../utils/common-repositories';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
-  const siteUrl = (config.public.siteUrl || '').replace(/\/$/, '');
-  if (!siteUrl) {
-    setResponseHeader(event, 'Content-Type', 'text/xml; charset=utf-8');
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Site URL (NUXT_PUBLIC_SITE_URL) is not configured. Production sitemap withheld. -->
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`;
-  }
+  const host = getRequestHeader(event, 'host');
+  const proto = getRequestHeader(event, 'x-forwarded-proto') || 'https';
+  const siteUrl = (config.public.siteUrl || (host ? `${proto}://${host}` : 'https://tipoffph.com')).replace(/\/$/, '');
 
   // Fetch published articles
   const { articles } = await ArticleRepository.getPublicArticles({ limit: 1000 });
@@ -21,7 +17,9 @@ export default defineEventHandler(async (event) => {
   const staticRoutes = [
     { loc: `${siteUrl}/`, changefreq: 'daily', priority: '1.0' },
     { loc: `${siteUrl}/latest-news`, changefreq: 'hourly', priority: '0.9' },
-    { loc: `${siteUrl}/scores-and-schedules`, changefreq: 'hourly', priority: '0.8' },
+    { loc: `${siteUrl}/local-sports`, changefreq: 'hourly', priority: '0.9' },
+    { loc: `${siteUrl}/scores-and-schedules`, changefreq: 'hourly', priority: '0.9' },
+    { loc: `${siteUrl}/nba-odds`, changefreq: 'hourly', priority: '0.8' },
     { loc: `${siteUrl}/about-us`, changefreq: 'monthly', priority: '0.5' },
     { loc: `${siteUrl}/contact`, changefreq: 'monthly', priority: '0.5' },
     { loc: `${siteUrl}/write-for-us`, changefreq: 'monthly', priority: '0.5' },
