@@ -1,7 +1,13 @@
 import { DEMO_SCORES } from '../db/demo-fixtures';
 import type { GameScore } from '../../shared/types';
 import { fetchLocalSportsData } from '../utils/local-sports';
-import { getTeamLogo, classifyMatchLeague, isVerifiedNbaTeam } from '../../shared/team-logos';
+import { getTeamLogo, classifyMatchLeague, isVerifiedNbaTeam, isVerifiedPbaTeam } from '../../shared/team-logos';
+import { getUniqueMatchImage } from '../../shared/image-resolver';
+
+function isForeignOrInvalidMatch(homeName: string, awayName: string, comp: string): boolean {
+  const combined = `${homeName} ${awayName} ${comp}`;
+  return /\b(mississippi|alabama|ole miss|kentucky|duke|kansas|gonzaga|uconn|purdue|macau black knights|titan ultra|slovenia|wnba|fiba\s*wbla|wbla|euroleague)\b/i.test(combined);
+}
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
@@ -9,19 +15,27 @@ export default defineEventHandler(async (event) => {
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
   let games: GameScore[] = [];
+  const usedImages = new Set<string>();
 
   try {
     const phData = await fetchLocalSportsData(refresh);
     if (phData && phData.allMatches && phData.allMatches.length > 0) {
-      // Keep only verified NBA games (both teams are official NBA franchises) and Philippine basketball leagues (PBA, MPBL, UAAP, NCAA, Gilas, PSL, EASL)
+      // Keep only verified NBA games, verified PBA games, and authentic Philippine basketball leagues (MPBL, UAAP, NCAA PH, Gilas)
       const verifiedMatches = phData.allMatches.filter(m => {
         const homeName = m.home?.name || '';
         const awayName = m.away?.name || '';
+        const comp = m.competition || '';
+        if (isForeignOrInvalidMatch(homeName, awayName, comp)) {
+          return false;
+        }
         if (m.leagueId === 'nba') {
           return isVerifiedNbaTeam(homeName) && isVerifiedNbaTeam(awayName);
         }
+        if (m.leagueId === 'pba') {
+          return isVerifiedPbaTeam(homeName) && isVerifiedPbaTeam(awayName);
+        }
         if (m.leagueId === 'fiba') {
-          return /gilas|philippines|pilipinas/i.test(`${homeName} ${awayName} ${m.competition || ''}`);
+          return /gilas|philippines|pilipinas/i.test(`${homeName} ${awayName} ${comp}`);
         }
         return true;
       });
@@ -46,9 +60,10 @@ export default defineEventHandler(async (event) => {
 
         let statusDetail = m.manilaTimeFormatted || 'Scheduled';
         if (mappedStatus === 'live') {
-          statusDetail = m.clock && m.clock !== 'FT' && m.clock !== 'LIVE'
-            ? `LIVE · ${m.clock}`
-            : 'LIVE';
+          const cleanClock = String(m.clock || '').replace(/^LIVE\s*[-·•:]?\s*/i, '').trim();
+          statusDetail = cleanClock && cleanClock !== 'FT' && cleanClock !== 'LIVE'
+            ? cleanClock
+            : 'In Progress';
         } else if (mappedStatus === 'final') {
           statusDetail = 'Final';
         }
@@ -63,6 +78,23 @@ export default defineEventHandler(async (event) => {
         else if (classified.leagueId === 'uaap') stage = 'UAAP Basketball';
         else if (classified.leagueId === 'ncaa') stage = 'NCAA Basketball';
         else if (classified.leagueId === 'nba') stage = compText || 'NBA Matchup';
+
+        const bannerUrl = getUniqueMatchImage(
+          {
+            id: m.id || `${classified.leagueId}-live88-${idx}`,
+            away_team: awayName,
+            home_team: homeName,
+            league: classified.league,
+            leagueId: classified.leagueId,
+            bannerUrl: m.bannerUrl,
+            status: m.status,
+            awayScore: m.awayScore ?? 0,
+            homeScore: m.homeScore ?? 0,
+            clockOrTime: statusDetail,
+            venue: m.venue || classified.defaultVenue
+          },
+          usedImages
+        );
 
         return {
           id: m.id || `${classified.leagueId}-live88-${idx}`,
@@ -83,6 +115,7 @@ export default defineEventHandler(async (event) => {
           gameTimeUtc: m.startTime || new Date().toISOString(),
           venue: m.venue || classified.defaultVenue,
           broadcast: m.streamLabel || classified.defaultBroadcast,
+          bannerUrl,
           sourceName: 'Live88 & ESPN Official Real-Time Feed',
           updatedAt: new Date().toISOString()
         };
@@ -114,6 +147,21 @@ export default defineEventHandler(async (event) => {
         league: g.league,
         leagueId: g.leagueId
       });
+      const bannerUrl = getUniqueMatchImage(
+        {
+          id: g.id,
+          away_team: g.awayTeam,
+          home_team: g.homeTeam,
+          league: classified.league,
+          leagueId: classified.leagueId,
+          status: g.status === 'final' ? 'finished' : g.status === 'live' ? 'live' : 'scheduled',
+          awayScore: g.awayScore ?? 0,
+          homeScore: g.homeScore ?? 0,
+          clockOrTime: g.statusDetail,
+          venue: g.venue || classified.defaultVenue
+        },
+        usedImages
+      );
       return {
         ...g,
         league: classified.league,
@@ -121,7 +169,8 @@ export default defineEventHandler(async (event) => {
         leagueFullName: classified.leagueFullName,
         leagueLogo: classified.leagueLogo,
         homeTeamLogo: getTeamLogo(g.homeTeam, g.homeTeamLogo),
-        awayTeamLogo: getTeamLogo(g.awayTeam, g.awayTeamLogo)
+        awayTeamLogo: getTeamLogo(g.awayTeam, g.awayTeamLogo),
+        bannerUrl
       };
     });
   }

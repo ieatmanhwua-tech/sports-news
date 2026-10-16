@@ -7,10 +7,12 @@ import type {
   PhSportsResponse 
 } from '../../shared/ph-sports-types';
 import { getTeamLogo, getTeamAccent, getTeamInitials, classifyMatchLeague, isVerifiedNbaTeam, getCanonicalTeamName } from '../../shared/team-logos';
+import { registerEspnNewsArticles } from '../../shared/image-resolver';
 
 export const SITE_KEY = '-Qw82foL4XnLt_vBp8LVXjwW';
 const BASE_URL = 'https://live88.eu.cc/api/v1';
 const ESPN_NBA_SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard';
+const ESPN_NBA_NEWS_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news';
 const SEED_CACHE_FILE_PATH = path.resolve(process.cwd(), '.data/local-sports-cache.json');
 const RUNTIME_CACHE_FILE_PATH = path.join(os.tmpdir(), 'tipoff-local-sports-cache.json');
 
@@ -114,6 +116,12 @@ export interface EspnLiveGame {
   state: 'pre' | 'in' | 'post';
   venue: string;
   startTime: string;
+  bannerUrl?: string;
+  quarterScores?: {
+    home: [number, number, number, number];
+    away: [number, number, number, number];
+  };
+  topPerformers?: string[];
 }
 
 export function parseEspnScoreboardEvents(espnJson: any): EspnLiveGame[] {
@@ -139,6 +147,48 @@ export function parseEspnScoreboardEvents(espnJson: any): EspnLiveGame[] {
     const venue = String(comp?.venue?.fullName || '').trim();
     const startTime = String(ev?.date || comp?.date || new Date().toISOString());
 
+    const bannerUrl = String(
+      comp?.headlines?.[0]?.video?.[0]?.thumbnail ||
+      comp?.headlines?.[0]?.images?.[0]?.url ||
+      ev?.links?.find((l: any) => l?.href && /\.(jpg|jpeg|png|webp)/i.test(l.href))?.href ||
+      ''
+    ).trim();
+
+    let quarterScores: { home: [number, number, number, number]; away: [number, number, number, number] } | undefined;
+    const hLines = Array.isArray(homeComp?.linescores) ? homeComp.linescores : [];
+    const aLines = Array.isArray(awayComp?.linescores) ? awayComp.linescores : [];
+    if (hLines.length >= 4 && aLines.length >= 4) {
+      quarterScores = {
+        home: [
+          Number(hLines[0]?.value || 0),
+          Number(hLines[1]?.value || 0),
+          Number(hLines[2]?.value || 0),
+          Number(hLines[3]?.value || 0)
+        ],
+        away: [
+          Number(aLines[0]?.value || 0),
+          Number(aLines[1]?.value || 0),
+          Number(aLines[2]?.value || 0),
+          Number(aLines[3]?.value || 0)
+        ]
+      };
+    }
+
+    const topPerformers: string[] = [];
+    for (const c of [homeComp, awayComp]) {
+      const tShort = String(c?.team?.abbreviation || c?.team?.shortDisplayName || c?.team?.name || '').trim();
+      const leaders = Array.isArray(c?.leaders) ? c.leaders : [];
+      for (const l of leaders.slice(0, 2)) {
+        const leaderEntry = l?.leaders?.[0];
+        const athleteName = String(leaderEntry?.athlete?.displayName || leaderEntry?.athlete?.shortName || '').trim();
+        const displayVal = String(leaderEntry?.displayValue || '').trim();
+        const catName = String(l?.shortDisplayName || l?.displayName || l?.name || '').trim();
+        if (athleteName && displayVal) {
+          topPerformers.push(`${athleteName} (${tShort}) — ${displayVal} (${catName})`);
+        }
+      }
+    }
+
     games.push({
       id: String(ev?.id || `${homeName}-${awayName}`),
       homeName,
@@ -150,7 +200,10 @@ export function parseEspnScoreboardEvents(espnJson: any): EspnLiveGame[] {
       clock: shortDetail || (state === 'in' ? 'LIVE' : state === 'post' ? 'FINAL' : ''),
       state,
       venue,
-      startTime
+      startTime,
+      bannerUrl: bannerUrl || undefined,
+      quarterScores,
+      topPerformers: topPerformers.length > 0 ? topPerformers : undefined
     });
   }
   return games;
@@ -532,23 +585,60 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
       }).finally(() => clearTimeout(timeoutId));
     };
 
-    // Fetch targeted basketball endpoints from Live88 + ESPN NBA Live Scoreboard in parallel
-    const [bballMatchesRes, pbaMatchesRes, scoresLiveRes, scoresTodayRes, livestreamRes, signalsRes, espnRes] = await Promise.all([
+    const formatYmdPht = (d: Date): string => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(d);
+      const y = parts.find(p => p.type === 'year')?.value || '2026';
+      const m = parts.find(p => p.type === 'month')?.value || '10';
+      const day = parts.find(p => p.type === 'day')?.value || '15';
+      return `${y}${m}${day}`;
+    };
+    const nowDate = new Date();
+    const todayStr = formatYmdPht(nowDate);
+    const next7DaysStr = formatYmdPht(new Date(nowDate.getTime() + 7 * 24 * 3600 * 1000));
+    const prev2DaysStr = formatYmdPht(new Date(nowDate.getTime() - 2 * 24 * 3600 * 1000));
+
+    // Fetch targeted basketball endpoints from Live88 + ESPN NBA Scoreboard (upcoming + recent) + ESPN News in parallel
+    const [bballMatchesRes, pbaMatchesRes, scoresLiveRes, scoresTodayRes, livestreamRes, signalsRes, espnRes, espnRecentRes, espnNewsRes] = await Promise.all([
       fetchWithNoStore(URLS.basketballMatches).catch(() => null),
       fetchWithNoStore(URLS.pbaMatches).catch(() => null),
       fetchWithNoStore(URLS.scoresLive).catch(() => null),
       fetchWithNoStore(URLS.scoresToday).catch(() => null),
       fetchWithNoStore(URLS.livestream).catch(() => null),
       fetchWithNoStore(URLS.signals).catch(() => null),
-      fetchWithNoStore(ESPN_NBA_SCOREBOARD_URL).catch(() => null)
+      fetchWithNoStore(`${ESPN_NBA_SCOREBOARD_URL}?dates=${todayStr}-${next7DaysStr}`).catch(() => null),
+      fetchWithNoStore(`${ESPN_NBA_SCOREBOARD_URL}?dates=${prev2DaysStr}-${todayStr}`).catch(() => null),
+      fetchWithNoStore(ESPN_NBA_NEWS_URL).catch(() => null)
     ]);
 
-    let espnLiveGames: EspnLiveGame[] = [];
-    if (espnRes && espnRes.ok) {
+    if (espnNewsRes && espnNewsRes.ok) {
       try {
-        const espnJson = await espnRes.json();
-        espnLiveGames = parseEspnScoreboardEvents(espnJson);
+        const newsJson = await espnNewsRes.json();
+        if (Array.isArray(newsJson?.articles)) {
+          registerEspnNewsArticles(newsJson.articles);
+        }
       } catch {}
+    }
+
+    let espnLiveGames: EspnLiveGame[] = [];
+    const seenEspnGameIds = new Set<string>();
+    for (const res of [espnRes, espnRecentRes]) {
+      if (res && res.ok) {
+        try {
+          const espnJson = await res.json();
+          const parsed = parseEspnScoreboardEvents(espnJson);
+          for (const g of parsed) {
+            if (!seenEspnGameIds.has(g.id)) {
+              seenEspnGameIds.add(g.id);
+              espnLiveGames.push(g);
+            }
+          }
+        } catch {}
+      }
     }
 
     const extractArray = (json: any, subKeys: string[] = ['matches', 'results', 'streams', 'signals', 'items']): any[] => {
@@ -792,6 +882,62 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
         matchMap.set(normalized.id, normalized);
       }
     });
+
+    // Also include ESPN NBA games directly if not already present in matchMap
+    for (const eg of espnLiveGames) {
+      if (!isVerifiedNbaTeam(eg.homeName) || !isVerifiedNbaTeam(eg.awayName)) continue;
+      const status: 'live' | 'scheduled' | 'finished' =
+        eg.state === 'in' ? 'live' : eg.state === 'post' ? 'finished' : 'scheduled';
+      const syntheticEspnRaw = {
+        id: `espn-nba-${eg.id}`,
+        sport: 'basketball',
+        leagueId: 'nba',
+        competition: 'NBA',
+        status,
+        clock: eg.clock || (status === 'finished' ? 'FT' : status === 'live' ? 'LIVE' : ''),
+        startTime: eg.startTime,
+        venue: eg.venue || 'NBA Arena',
+        bannerUrl: eg.bannerUrl,
+        quarterScores: eg.quarterScores,
+        topPerformers: eg.topPerformers,
+        home: {
+          name: getCanonicalTeamName(eg.homeName) || eg.homeName,
+          shortName: getCanonicalTeamName(eg.homeName) || eg.homeName,
+          logo: eg.homeLogo
+        },
+        away: {
+          name: getCanonicalTeamName(eg.awayName) || eg.awayName,
+          shortName: getCanonicalTeamName(eg.awayName) || eg.awayName,
+          logo: eg.awayLogo
+        },
+        homeScore: eg.homeScore,
+        awayScore: eg.awayScore,
+        sources: [],
+        hasStream: false
+      };
+      const normalized = normalizeMatchClassification(
+        {
+          ...syntheticEspnRaw,
+          manilaTimeFormatted: formatManilaTime(eg.startTime, status, syntheticEspnRaw.clock)
+        },
+        espnLiveGames,
+        authoritativeLiveIds
+      );
+      const existingKey = findExistingMatchKey(normalized);
+      if (existingKey) {
+        const prev = matchMap.get(existingKey)!;
+        const merged = mergeMatchRecords(prev, normalized);
+        if (eg.bannerUrl && !merged.bannerUrl) merged.bannerUrl = eg.bannerUrl;
+        if (eg.quarterScores && !merged.quarterScores) merged.quarterScores = eg.quarterScores;
+        if (eg.topPerformers && !merged.topPerformers) merged.topPerformers = eg.topPerformers;
+        if (merged.id !== existingKey) {
+          matchMap.delete(existingKey);
+        }
+        matchMap.set(merged.id, merged);
+      } else {
+        matchMap.set(normalized.id, normalized);
+      }
+    }
 
     const allMerged = Array.from(matchMap.values()).map(m =>
       normalizeMatchClassification(m, espnLiveGames, authoritativeLiveIds)

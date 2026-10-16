@@ -10,6 +10,7 @@ import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
 import { NBA_PRESEASON_PREDICTIONS_TOMORROW } from '~/shared/nba-predictions';
 import { slugifyTeam } from '~/shared/seo-routing';
 import { getTeamLogo } from '~/shared/team-logos';
+import { getUniqueMatchImage, handleImageError } from '~/shared/image-resolver';
 import { ArrowRight, Flame, Trophy, Globe, GraduationCap, ShieldAlert } from 'lucide-vue-next';
 
 const todayBlogLeagueFilter = ref<'all' | 'nba' | 'pba' | 'mpbl' | 'collegiate'>('all');
@@ -51,14 +52,37 @@ const { data: homeData, error } = await useAsyncData('home-feed', async () => {
 const filteredTodayMatchBlogs = computed(() => {
   const list = homeData.value?.scores || [];
   const f = todayBlogLeagueFilter.value;
-  if (f === 'all') return list.slice(0, 12);
-  if (f === 'nba') return list.filter(g => (g.leagueId || g.league).toLowerCase() === 'nba').slice(0, 12);
-  if (f === 'pba') return list.filter(g => (g.leagueId || g.league).toLowerCase() === 'pba').slice(0, 12);
-  if (f === 'mpbl') return list.filter(g => (g.leagueId || g.league).toLowerCase() === 'mpbl').slice(0, 12);
-  if (f === 'collegiate') {
-    return list.filter(g => ['uaap', 'ncaa'].includes((g.leagueId || g.league).toLowerCase())).slice(0, 12);
+  let subset = list;
+  if (f === 'nba') subset = list.filter(g => (g.leagueId || g.league).toLowerCase() === 'nba');
+  else if (f === 'pba') subset = list.filter(g => (g.leagueId || g.league).toLowerCase() === 'pba');
+  else if (f === 'mpbl') subset = list.filter(g => (g.leagueId || g.league).toLowerCase() === 'mpbl');
+  else if (f === 'collegiate') {
+    subset = list.filter(g => ['uaap', 'ncaa'].includes((g.leagueId || g.league).toLowerCase()));
   }
-  return list.slice(0, 12);
+
+  const usedImages = new Set<string>();
+  return subset.slice(0, 12).map((game) => {
+    const resolvedBanner = getUniqueMatchImage(
+      {
+        id: game.id,
+        away_team: game.awayTeam,
+        home_team: game.homeTeam,
+        league: game.league,
+        leagueId: game.leagueId,
+        bannerUrl: game.bannerUrl,
+        status: game.status === 'final' ? 'finished' : game.status === 'live' ? 'live' : 'scheduled',
+        awayScore: game.awayScore ?? 0,
+        homeScore: game.homeScore ?? 0,
+        clockOrTime: game.statusDetail,
+        venue: game.venue
+      },
+      usedImages
+    );
+    return {
+      ...game,
+      bannerUrl: resolvedBanner
+    };
+  });
 });
 
 function getMatchBlogUrl(game: GameScore): string {
@@ -77,6 +101,16 @@ function getMatchBlogHeadline(game: GameScore): string {
     return `${winner} Defeat ${loser} ${Math.max(h, a)}–${Math.min(h, a)}: ${game.league} Box Score & Recap`;
   }
   return `${game.awayTeam} vs. ${game.homeTeam} ${game.league} Preview & Prediction Today (${game.statusDetail})`;
+}
+
+function getMatchBlogExcerpt(game: GameScore): string {
+  if (game.status === 'live') {
+    return `Follow live courtside updates, quarter-by-quarter scoring, and in-play tactical analysis as ${game.awayTeam} battles ${game.homeTeam} at ${game.venue}.`;
+  }
+  if (game.status === 'final') {
+    return `Full post-game box score recap, quarter breakdown, and top player highlights from ${game.awayTeam} vs. ${game.homeTeam} (${game.awayScore ?? 0}–${game.homeScore ?? 0}) at ${game.venue}.`;
+  }
+  return `Complete pre-game preview, projected starting lineups, point spread odds, and tactical keys for ${game.awayTeam} vs. ${game.homeTeam} (${game.statusDetail}) at ${game.venue}.`;
 }
 
 const config = useRuntimeConfig();
@@ -178,24 +212,9 @@ useHead({
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
       <!-- Main News Column (8 cols on desktop) -->
       <section class="lg:col-span-8 space-y-10">
-        <!-- Lead Hero Story (Editor-selected) -->
-        <section v-if="homeData?.featured">
-          <LeadArticleCard :article="homeData.featured" />
-        </section>
-
-        <!-- Latest News Component with Thumbnails, Excerpts, and Category Filters -->
-        <LatestNews 
-          :initial-articles="homeData?.latest"
-          :exclude-id="homeData?.featured?.id" 
-          :limit="4"
-          :show-filters="true"
-          title="Latest News"
-          subtitle="Continuous real-time stream of Philippine basketball updates"
-        />
-
-        <!-- Today's All-Matches Blog Hub (NBA, PBA, MPBL, UAAP & NCAA) -->
-        <section v-if="filteredTodayMatchBlogs.length > 0" class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 border border-cyan-500/30 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.65)] space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
+        <!-- TOP OF CONTENT: Updated Today · All Matches Today Blog Coverage -->
+        <section v-if="filteredTodayMatchBlogs.length > 0" class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 border border-cyan-500/30 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.65)] ring-1 ring-cyan-500/20 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
             <div>
               <div class="flex items-center gap-2">
                 <span class="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-black uppercase tracking-wider">
@@ -203,7 +222,7 @@ useHead({
                 </span>
                 <span class="text-[11px] font-bold text-cyan-300">All Matches Today Blog Coverage</span>
               </div>
-              <h2 class="text-lg sm:text-xl font-black text-white tracking-tight mt-0.5">
+              <h2 class="text-lg sm:text-xl font-black text-white tracking-tight mt-1">
                 Today’s Match Blogs: Live Updates, Previews &amp; Box Score Recaps
               </h2>
             </div>
@@ -230,65 +249,112 @@ useHead({
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <article
               v-for="game in filteredTodayMatchBlogs"
               :key="`blog-today-${game.id}`"
-              class="p-4 rounded-xl bg-slate-950/85 border border-slate-800 hover:border-amber-500/40 flex flex-col justify-between gap-3 transition-all"
+              class="group flex flex-col justify-between space-y-3 transition-colors"
             >
-              <div class="space-y-2">
-                <div class="flex items-center justify-between text-[11px] text-slate-400 font-bold">
-                  <span class="text-orange-400 font-black uppercase">{{ game.league }} · {{ game.stage }}</span>
-                  <span
-                    class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
-                    :class="game.status === 'live'
-                      ? 'bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse'
-                      : game.status === 'upcoming'
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                      : 'bg-slate-800 text-slate-300'"
-                  >
-                    {{ game.status === 'live' ? `LIVE · ${game.statusDetail}` : game.status === 'final' ? 'FINAL BOX SCORE' : game.statusDetail }}
+              <div>
+                <!-- News Blog Card Aspect-Video Thumbnail with Uncrowded Broadcast Overlays -->
+                <NuxtLink
+                  :to="getMatchBlogUrl(game)"
+                  class="block overflow-hidden rounded-xl bg-slate-800 border border-slate-700/60 shrink-0 relative aspect-video shadow-sm"
+                >
+                  <img
+                    :src="game.bannerUrl"
+                    :alt="`${game.awayTeam} vs ${game.homeTeam} ${game.league} Match Blog`"
+                    class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    @error="(e) => handleImageError(e, 'banner', `${game.awayTeam} vs ${game.homeTeam}`, game.league)"
+                  />
+                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/25 to-slate-950/35"></div>
+
+                  <!-- Top Row: TipOff Ph Watermark (Top-Left) + Live/Time Status Pill (Top-Right) -->
+                  <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/85 border border-amber-500/40 text-amber-400 text-[9px] sm:text-[10px] font-black uppercase tracking-wider shadow backdrop-blur-xs shrink-0">
+                      <img
+                        src="/img/TipOffPh_logo.png"
+                        alt="TipOff Ph"
+                        class="w-3 h-3 object-contain"
+                        @error="($event.target as HTMLImageElement).style.display = 'none'"
+                      />
+                      <span>TipOff Ph</span>
+                    </span>
+
+                    <span
+                      class="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase shadow truncate max-w-[65%]"
+                      :class="game.status === 'live'
+                        ? 'bg-red-600/95 text-white border border-red-400/50 animate-pulse'
+                        : game.status === 'upcoming'
+                        ? 'bg-slate-950/85 text-cyan-300 border border-cyan-500/40 backdrop-blur-xs'
+                        : 'bg-slate-950/90 text-slate-200 border border-slate-700'"
+                    >
+                      {{ game.status === 'live' ? `LIVE · ${game.statusDetail.replace(/^LIVE\s*[-·•:]?\s*/i, '')}` : game.status === 'final' ? 'FINAL BOX SCORE' : game.statusDetail }}
+                    </span>
+                  </div>
+
+                  <!-- Bottom Row: Corner Team Logos + Score/VS Badge -->
+                  <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-end justify-between gap-2">
+                    <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1 min-w-0 max-w-[42%] backdrop-blur-xs">
+                      <img
+                        :src="game.awayTeamLogo || getTeamLogo(game.awayTeam)"
+                        :alt="game.awayTeam"
+                        class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
+                        loading="lazy"
+                        @error="(e) => handleImageError(e, 'logo', game.awayTeam, game.league)"
+                      />
+                      <span class="text-[10px] sm:text-[11px] font-black text-white truncate">{{ game.awayTeam }}</span>
+                    </div>
+
+                    <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-mono font-black text-[10px] sm:text-[11px] shrink-0 shadow">
+                      {{ game.status === 'upcoming' ? 'VS' : `${game.awayScore ?? 0} – ${game.homeScore ?? 0}` }}
+                    </span>
+
+                    <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1 min-w-0 max-w-[42%] justify-end backdrop-blur-xs">
+                      <span class="text-[10px] sm:text-[11px] font-black text-white truncate">{{ game.homeTeam }}</span>
+                      <img
+                        :src="game.homeTeamLogo || getTeamLogo(game.homeTeam)"
+                        :alt="game.homeTeam"
+                        class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
+                        loading="lazy"
+                        @error="(e) => handleImageError(e, 'logo', game.homeTeam, game.league)"
+                      />
+                    </div>
+                  </div>
+                </NuxtLink>
+
+                <!-- News Blog Metadata Kicker (Matches LatestNews / ArticleCard style) -->
+                <div class="flex items-center gap-1.5 text-xs text-slate-400 mt-3 mb-1.5 flex-wrap">
+                  <span class="font-black text-orange-400 tracking-wider uppercase text-[11px] drop-shadow-[0_0_6px_rgba(249,115,22,0.3)]">
+                    {{ game.league }} · {{ game.stage }}
                   </span>
+                  <span class="text-slate-600" aria-hidden="true">·</span>
+                  <span class="text-slate-400 text-[11px] truncate">{{ game.venue }}</span>
                 </div>
 
-                <!-- Matchup Strip with Logos & Score -->
-                <div class="flex items-center justify-between gap-2 py-1.5 px-2.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-xs">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <img
-                      :src="game.awayTeamLogo || getTeamLogo(game.awayTeam)"
-                      :alt="game.awayTeam"
-                      class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
-                      loading="lazy"
-                    />
-                    <span class="font-bold text-white truncate">{{ game.awayTeam }}</span>
-                  </div>
-                  <span class="font-mono font-black text-amber-400 text-xs shrink-0 px-1.5">
-                    {{ game.status === 'upcoming' ? 'VS' : `${game.awayScore ?? 0} – ${game.homeScore ?? 0}` }}
-                  </span>
-                  <div class="flex items-center gap-2 min-w-0 justify-end">
-                    <span class="font-bold text-white truncate">{{ game.homeTeam }}</span>
-                    <img
-                      :src="game.homeTeamLogo || getTeamLogo(game.homeTeam)"
-                      :alt="game.homeTeam"
-                      class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-
-                <h3 class="text-sm font-extrabold text-white leading-snug">
-                  <NuxtLink :to="getMatchBlogUrl(game)" class="hover:text-amber-400 transition-colors">
+                <!-- News Blog Headline -->
+                <h3 class="font-bold text-base md:text-lg text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-2">
+                  <NuxtLink :to="getMatchBlogUrl(game)">
                     {{ getMatchBlogHeadline(game) }}
                   </NuxtLink>
                 </h3>
+
+                <!-- News Blog Excerpt -->
+                <p class="mt-2 text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
+                  {{ getMatchBlogExcerpt(game) }}
+                </p>
               </div>
 
-              <div class="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[11px]">
+              <!-- News Blog Footer Row -->
+              <div class="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[11px] mt-2">
                 <NuxtLink
                   :to="getMatchBlogUrl(game)"
-                  class="font-bold text-amber-400 hover:text-amber-300 underline truncate"
+                  class="font-bold text-orange-400 hover:text-amber-300 inline-flex items-center gap-1 truncate"
                 >
-                  Read Full Match Blog &rarr;
+                  <span>Read Full Match Blog</span>
+                  <ArrowRight class="w-3 h-3 shrink-0" />
                 </NuxtLink>
                 <div class="flex items-center gap-1.5 shrink-0">
                   <NuxtLink
@@ -311,7 +377,22 @@ useHead({
           </div>
         </section>
 
-        <!-- NBA Today's 5-Fight Showcase Blogs -->
+        <!-- Lead Hero Story (Editor-selected) -->
+        <section v-if="homeData?.featured">
+          <LeadArticleCard :article="homeData.featured" />
+        </section>
+
+        <!-- Latest News Component with Thumbnails, Excerpts, and Category Filters -->
+        <LatestNews 
+          :initial-articles="homeData?.latest"
+          :exclude-id="homeData?.featured?.id" 
+          :limit="6"
+          :show-filters="true"
+          title="Latest News"
+          subtitle="Continuous real-time stream of Philippine basketball updates"
+        />
+
+        <!-- NBA Today's Matchup Blogs & Predictions -->
         <section class="bg-gradient-to-br from-[#0b1326] via-[#101c36] to-[#171129] border border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.65)] space-y-5">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
             <div class="flex items-center gap-3">
@@ -337,102 +418,131 @@ useHead({
             </NuxtLink>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <NuxtLink
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <article
               v-for="pred in NBA_PRESEASON_PREDICTIONS_TOMORROW"
               :key="pred.id"
-              :to="`/nba#${pred.id}`"
-              class="group rounded-xl overflow-hidden bg-slate-950/90 border border-slate-800 hover:border-amber-500/60 transition-all flex flex-col justify-between"
+              class="group flex flex-col justify-between space-y-3 transition-colors"
             >
-              <div class="relative h-28 overflow-hidden">
-                <img
-                  :src="pred.featuredImageUrl"
-                  :alt="pred.blogTitle"
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
-                />
-                <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent"></div>
-                <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black uppercase">
-                  #0{{ pred.designNumber }}
-                </span>
-                <div class="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs font-black text-white">
-                  <span class="flex items-center gap-1">
-                    <img :src="pred.awayTeam.logoUrl" :alt="pred.awayTeam.abbr" class="w-4 h-4 object-contain" />
-                    {{ pred.awayTeam.abbr }}
+              <div>
+                <NuxtLink
+                  :to="`/nba#${pred.id}`"
+                  class="block overflow-hidden rounded-xl bg-slate-800 border border-slate-700/60 shrink-0 relative aspect-video shadow-sm"
+                >
+                  <img
+                    :src="pred.featuredImageUrl"
+                    :alt="pred.blogTitle"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                  />
+                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent"></div>
+                  <span class="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black uppercase">
+                    NBA PREDICTION · #0{{ pred.designNumber }}
                   </span>
-                  <span class="text-[10px] text-amber-400">{{ pred.predictedScore.away }}-{{ pred.predictedScore.home }}</span>
-                  <span class="flex items-center gap-1">
-                    {{ pred.homeTeam.abbr }}
-                    <img :src="pred.homeTeam.logoUrl" :alt="pred.homeTeam.abbr" class="w-4 h-4 object-contain" />
-                  </span>
+                  <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-xs font-black text-white">
+                    <span class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1">
+                      <img :src="pred.awayTeam.logoUrl" :alt="pred.awayTeam.abbr" class="w-4 h-4 object-contain" />
+                      {{ pred.awayTeam.shortName }}
+                    </span>
+                    <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-mono text-[11px]">{{ pred.predictedScore.away }}–{{ pred.predictedScore.home }}</span>
+                    <span class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1">
+                      {{ pred.homeTeam.shortName }}
+                      <img :src="pred.homeTeam.logoUrl" :alt="pred.homeTeam.abbr" class="w-4 h-4 object-contain" />
+                    </span>
+                  </div>
+                </NuxtLink>
+
+                <div class="flex items-center gap-1.5 text-xs text-slate-400 mt-3 mb-1.5 flex-wrap">
+                  <span class="font-black text-orange-400 uppercase text-[11px]">NBA · {{ pred.expertPick }}</span>
+                  <span class="text-slate-600" aria-hidden="true">·</span>
+                  <span class="text-slate-400 text-[11px]">{{ pred.tipOffManila }}</span>
                 </div>
+
+                <h3 class="font-bold text-base md:text-lg text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-2">
+                  <NuxtLink :to="`/nba#${pred.id}`">
+                    {{ pred.blogTitle }}
+                  </NuxtLink>
+                </h3>
+
+                <p class="mt-2 text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
+                  {{ pred.summary }}
+                </p>
               </div>
-              <div class="p-2.5 space-y-1">
-                <div class="text-[10px] font-bold text-emerald-400 truncate">{{ pred.expertPick }}</div>
-                <div class="text-xs font-bold text-slate-200 group-hover:text-amber-300 line-clamp-2 leading-snug">
-                  {{ pred.awayTeam.shortName }} vs. {{ pred.homeTeam.shortName }}
-                </div>
+
+              <div class="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 mt-2">
+                <NuxtLink
+                  :to="`/nba#${pred.id}`"
+                  class="text-[11px] font-bold text-orange-400 hover:text-amber-300 inline-flex items-center gap-1"
+                >
+                  <span>Read Prediction</span>
+                  <ArrowRight class="w-3 h-3" />
+                </NuxtLink>
+                <a
+                  href="https://tipoff.bybetcasino.ph/c6Yv/"
+                  target="_blank"
+                  rel="nofollow sponsored noopener"
+                  class="px-2.5 py-1 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 transition-all whitespace-nowrap"
+                >
+                  Bet Now ↗
+                </a>
               </div>
-            </NuxtLink>
+            </article>
           </div>
         </section>
 
         <!-- Mid-page In-Feed Ad -->
         <AdUnit format="banner" class="sm:hidden" />
 
-        <!-- Dual Column: PBA & MPBL News -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <!-- PBA News Section -->
-          <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-orange-500/50 rounded-2xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-4">
-              <h3 class="font-black text-sm uppercase tracking-wider text-white flex items-center gap-1.5 drop-shadow-sm">
-                <Trophy class="w-4 h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.5)]" />
-                <span>PBA Coverage</span>
-              </h3>
-              <NuxtLink to="/pba-news" class="text-xs font-bold text-orange-400 hover:text-orange-300 hover:underline">
-                More PBA &rarr;
-              </NuxtLink>
-            </div>
+        <!-- PBA News Blog Cards Section -->
+        <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-orange-500/50 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+            <h2 class="text-base sm:text-lg font-black uppercase tracking-wider text-white flex items-center gap-2 drop-shadow-sm">
+              <Trophy class="w-5 h-5 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.5)]" />
+              <span>PBA Coverage</span>
+            </h2>
+            <NuxtLink to="/pba-news" class="text-xs font-bold text-orange-400 hover:text-orange-300 hover:underline">
+              More PBA &rarr;
+            </NuxtLink>
+          </div>
 
-            <div class="space-y-4">
-              <ArticleCard 
-                v-for="(art, idx) in homeData?.pba || []" 
-                :key="art.id" 
-                :article="art"
-                :layout="idx === 0 ? 'vertical' : 'compact'"
-                :show-excerpt="idx === 0"
-              />
-            </div>
-          </section>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <ArticleCard 
+              v-for="art in homeData?.pba || []" 
+              :key="art.id" 
+              :article="art"
+              layout="vertical"
+              :show-excerpt="true"
+            />
+          </div>
+        </section>
 
-          <!-- MPBL News Section -->
-          <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-amber-500/50 rounded-2xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-4">
-              <h3 class="font-black text-sm uppercase tracking-wider text-white flex items-center gap-1.5 drop-shadow-sm">
-                <Flame class="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
-                <span>MPBL Updates</span>
-              </h3>
-              <NuxtLink to="/mpbl-news" class="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline">
-                More MPBL &rarr;
-              </NuxtLink>
-            </div>
+        <!-- MPBL News Blog Cards Section -->
+        <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-amber-500/50 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+            <h2 class="text-base sm:text-lg font-black uppercase tracking-wider text-white flex items-center gap-2 drop-shadow-sm">
+              <Flame class="w-5 h-5 text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
+              <span>MPBL Updates</span>
+            </h2>
+            <NuxtLink to="/mpbl-news" class="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline">
+              More MPBL &rarr;
+            </NuxtLink>
+          </div>
 
-            <div class="space-y-4">
-              <ArticleCard 
-                v-for="(art, idx) in homeData?.mpbl || []" 
-                :key="art.id" 
-                :article="art"
-                :layout="idx === 0 ? 'vertical' : 'compact'"
-                :show-excerpt="idx === 0"
-              />
-            </div>
-          </section>
-        </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <ArticleCard 
+              v-for="art in homeData?.mpbl || []" 
+              :key="art.id" 
+              :article="art"
+              layout="vertical"
+              :show-excerpt="true"
+            />
+          </div>
+        </section>
 
-        <!-- Collegiate & Grassroots Section (UAAP & NCAA) -->
+        <!-- Collegiate & Grassroots Section (UAAP & NCAA) News Blog Cards -->
         <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-cyan-500/40 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
-            <h2 class="text-base font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+            <h2 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
               <GraduationCap class="w-5 h-5 text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
               <span>Collegiate &amp; Grassroots (UAAP &amp; NCAA)</span>
             </h2>
@@ -441,21 +551,21 @@ useHead({
             </NuxtLink>
           </div>
 
-          <div class="space-y-4 divide-y divide-slate-800/80">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <ArticleCard 
               v-for="art in homeData?.collegiate || []" 
               :key="art.id" 
               :article="art"
-              layout="horizontal"
-              class="pt-4 first:pt-0"
+              layout="vertical"
+              :show-excerpt="true"
             />
           </div>
         </section>
 
-        <!-- Gilas Pilipinas & International Section -->
+        <!-- Gilas Pilipinas & International Section News Blog Cards -->
         <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 hover:border-blue-500/40 rounded-2xl p-5 sm:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.6)] transition-all">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
-            <h2 class="text-base font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+            <h2 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2 drop-shadow-sm">
               <Globe class="w-5 h-5 text-blue-400 drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]" />
               <span>Gilas Pilipinas &amp; Global Pinoys</span>
             </h2>
@@ -470,6 +580,7 @@ useHead({
               :key="art.id" 
               :article="art"
               layout="vertical"
+              :show-excerpt="true"
             />
           </div>
         </section>

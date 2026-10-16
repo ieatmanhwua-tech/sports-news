@@ -1,9 +1,10 @@
 import type { Article } from '../../shared/types';
 import type { PhSportsMatch } from '../../shared/ph-sports-types';
 import { fetchLocalSportsData, isLive88BasketballMatch } from './local-sports';
-import { classifyMatchLeague, isVerifiedNbaTeam, getCanonicalTeamName } from '../../shared/team-logos';
+import { classifyMatchLeague, isVerifiedNbaTeam, isVerifiedPbaTeam, getCanonicalTeamName } from '../../shared/team-logos';
 import { slugifyTeam } from '../../shared/seo-routing';
 import {
+  getUniqueMatchImage,
   findExactMatchupOrTeamPhoto,
   getSvgBlogArticleCover,
   normalizeLive88ImageUrl
@@ -24,36 +25,30 @@ function pickFeaturedImageForMatch(
   const away = match.away?.name || 'Away Team';
   const home = match.home?.name || 'Home Team';
 
-  // 1. Native match thumbnail from feed if unique
-  const nativeBanner = normalizeLive88ImageUrl(match.bannerUrl);
-  if (nativeBanner && (!usedImages || !usedImages.has(nativeBanner))) {
-    usedImages?.add(nativeBanner);
-    return { url: nativeBanner, isRealPhoto: true };
-  }
+  const uniqueImg = getUniqueMatchImage(
+    {
+      id: match.id,
+      away_team: away,
+      home_team: home,
+      league: classified.leagueId === 'pba' ? 'PBA' : 'NBA',
+      leagueId: classified.leagueId,
+      bannerUrl: match.bannerUrl,
+      status: match.status,
+      awayScore: Number(match.awayScore || 0),
+      homeScore: Number(match.homeScore || 0),
+      clockOrTime:
+        match.status === 'live'
+          ? match.clock || 'LIVE'
+          : match.manilaTimeFormatted || 'Today PHT',
+      venue: match.venue || classified.defaultVenue
+    },
+    usedImages
+  );
 
-  // 2. Exact dual-team or single-team action photo (strictly matching the teams in this blog & never reused)
-  const exactPhoto = findExactMatchupOrTeamPhoto(away, home, classified.leagueId, usedImages);
-  if (exactPhoto) {
-    return { url: exactPhoto, isRealPhoto: true };
-  }
-
-  // 3. Bespoke 16:9 Arena Matchup Broadcast Graphic featuring the exact away & home teams, colors, and score/time
-  const customCover = getSvgBlogArticleCover({
-    awayTeam: away,
-    homeTeam: home,
-    league: classified.league,
-    competition: match.competition || classified.leagueFullName,
-    status: match.status,
-    awayScore: Number(match.awayScore || 0),
-    homeScore: Number(match.homeScore || 0),
-    clockOrTime:
-      match.status === 'live'
-        ? match.clock || 'LIVE'
-        : match.manilaTimeFormatted || 'Today PHT',
-    venue: match.venue || classified.defaultVenue
-  });
-
-  return { url: customCover, isRealPhoto: false };
+  return {
+    url: uniqueImg,
+    isRealPhoto: !uniqueImg.startsWith('data:image/svg+xml')
+  };
 }
 
 function getCategoryAndAuthorForLeague(leagueId: string): {
@@ -275,15 +270,18 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
       return;
     }
 
-    // Strictly include only verified NBA games and authentic Philippine basketball leagues (PBA, MPBL, UAAP, NCAA, Gilas, PSL, EASL)
+    // Strictly include only verified NBA games and verified PBA games (excluding WNBA, Slovenia Cup, FIBA WBLA, MPBL, UAAP, or 2024/old matches)
     const validMatches = sportsData.allMatches.filter(m => {
       if (!isLive88BasketballMatch(m)) return false;
       const hName = m.home?.name || '';
       const aName = m.away?.name || '';
-      if (m.leagueId === 'nba') {
-        return isVerifiedNbaTeam(hName) && isVerifiedNbaTeam(aName);
+      const comp = `${m.competition || ''} ${m.streamLabel || ''} ${hName} ${aName}`;
+      if (/\b(wnba|slovenia|fiba\s*wbla|wbla|women|2024|2023|mpbl|maharlika|uaap|ncaa)\b/i.test(comp)) {
+        return false;
       }
-      return true;
+      if (isVerifiedNbaTeam(hName) && isVerifiedNbaTeam(aName)) return true;
+      if (isVerifiedPbaTeam(hName) && isVerifiedPbaTeam(aName)) return true;
+      return false;
     });
 
     // Sort: 1. Live matches, 2. Today/Recent Oct 14-16 matches (PBA, NBA, MPBL, NCAA, UAAP), 3. Other matches

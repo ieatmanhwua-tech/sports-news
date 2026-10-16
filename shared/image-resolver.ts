@@ -1,11 +1,32 @@
 import { getTeamLogo, getCanonicalTeamName, getTeamAccent, getTeamInitials, isVerifiedNbaTeam } from './team-logos';
 
 const STORAGE_KEY_LOGOS = 'tipoff_resolved_logos_v2';
-const STORAGE_KEY_BANNERS = 'tipoff_resolved_banners_v3';
+const STORAGE_KEY_BANNERS = 'tipoff_resolved_banners_v4';
 
 const memoryLogoCache = new Map<string, string>();
 const memoryBannerCache = new Map<string, string>();
+const espnTeamNewsImages = new Map<string, string[]>();
 const inFlightRequests = new Map<string, Promise<any>>();
+const globalUsedImageUrls = new Set<string>();
+
+export interface UniqueMatchImageInput {
+  id?: string;
+  slug?: string;
+  away_team?: string;
+  home_team?: string;
+  awayTeam?: string;
+  homeTeam?: string;
+  away?: { name?: string; logo?: string };
+  home?: { name?: string; logo?: string };
+  league?: string;
+  leagueId?: string;
+  competition?: string;
+  status?: string;
+  bannerUrl?: string;
+  actionThumbnail?: string;
+  espnThumbnail?: string;
+  startTime?: string;
+}
 
 function loadStorageMap(key: string, target: Map<string, string>) {
   if (typeof window === 'undefined') return;
@@ -42,6 +63,47 @@ export function initImageResolverCache() {
   if (typeof window === 'undefined') return;
   if (memoryLogoCache.size === 0) loadStorageMap(STORAGE_KEY_LOGOS, memoryLogoCache);
   if (memoryBannerCache.size === 0) loadStorageMap(STORAGE_KEY_BANNERS, memoryBannerCache);
+}
+
+/**
+ * Registers live ESPN NBA News articles from https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news
+ * so getUniqueMatchImage(match) can pull real, unused ESPN action photos for matching NBA teams.
+ */
+export function registerEspnNewsArticles(articles?: any[]) {
+  if (!Array.isArray(articles) || articles.length === 0) return;
+  for (const art of articles) {
+    const imgUrl = String(
+      art?.images?.[0]?.url ||
+      art?.video?.[0]?.thumbnail ||
+      ''
+    ).trim();
+    if (!imgUrl) continue;
+
+    const text = `${art?.headline || ''} ${art?.description || ''} ${
+      Array.isArray(art?.categories)
+        ? art.categories.map((c: any) => c?.description || c?.team?.description || '').join(' ')
+        : ''
+    }`.toLowerCase();
+
+    const nbaKeywords = [
+      'lakers', 'warriors', 'celtics', 'hornets', 'nets', 'heat', 'bulls', 'bucks',
+      'cavaliers', 'magic', 'nuggets', 'clippers', 'pistons', 'timberwolves', 'pacers',
+      'thunder', 'pelicans', 'mavericks', 'knicks', 'raptors', 'suns', 'spurs',
+      'trail blazers', 'blazers', 'kings', '76ers', 'sixers', 'hawks', 'wizards',
+      'grizzlies', 'rockets', 'jazz'
+    ];
+
+    for (const kw of nbaKeywords) {
+      if (text.includes(kw)) {
+        const canonical = String(getCanonicalTeamName(kw) || kw).toLowerCase();
+        const existing = espnTeamNewsImages.get(canonical) || [];
+        if (!existing.includes(imgUrl)) {
+          existing.push(imgUrl);
+          espnTeamNewsImages.set(canonical, existing);
+        }
+      }
+    }
+  }
 }
 
 function escapeXml(raw: string): string {
@@ -93,7 +155,6 @@ export function getSvgBasketballCrest(teamName: string): string {
 
 /**
  * Generates a unique, team-accurate 16:9 Arena Hardwood & Stadium Spotlight Backdrop SVG
- * Used behind the HTML team logo overlay on LocalSportsHub cards so every matchup has its own believable arena look.
  */
 export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league = 'BASKETBALL'): string {
   const awayClean = String(awayTeam || 'Away Team').trim();
@@ -147,12 +208,10 @@ export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league =
       </linearGradient>
     </defs>
 
-    <!-- Upper Arena Bowl -->
     <rect width="1280" height="720" fill="url(#sky)"/>
     <rect width="1280" height="720" fill="url(#awayGlow)"/>
     <rect width="1280" height="720" fill="url(#homeGlow)"/>
 
-    <!-- Stadium Roof Trusses & Spotlights -->
     <g stroke="#ffffff" stroke-opacity="0.07" stroke-width="2">
       <line x1="0" y1="70" x2="1280" y2="70"/>
       <line x1="120" y1="0" x2="340" y2="420"/>
@@ -161,18 +220,14 @@ export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league =
     <polygon points="180,0 40,460 440,460" fill="${awayColor}" fill-opacity="0.12" transform="rotate(-${beamAngle} 180 0)"/>
     <polygon points="1100,0 840,460 1240,460" fill="${homeColor}" fill-opacity="0.12" transform="rotate(${beamAngle} 1100 0)"/>
 
-    <!-- Arena Upper Tier Crowd / LED Ribbon -->
     <rect x="0" y="370" width="1280" height="16" fill="url(#centerSplit)"/>
     <line x1="0" y1="370" x2="1280" y2="370" stroke="#fbbf24" stroke-opacity="0.35" stroke-width="1.5"/>
     <line x1="0" y1="386" x2="1280" y2="386" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="1.5"/>
 
-    <!-- 3D Perspective Hardwood Court Floor -->
     <polygon points="0,386 1280,386 1280,720 0,720" fill="url(#hardwood)"/>
-    <!-- Team Colored Court Aprons -->
     <polygon points="0,386 240,386 90,720 0,720" fill="${awayColor}" fill-opacity="0.38"/>
     <polygon points="1040,386 1280,386 1280,720 1190,720" fill="${homeColor}" fill-opacity="0.38"/>
 
-    <!-- Perspective Court Markings -->
     <g fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="3">
       <line x1="240" y1="386" x2="90" y2="720"/>
       <line x1="1040" y1="386" x2="1190" y2="720"/>
@@ -182,7 +237,6 @@ export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league =
       <path d="M 1090 430 Q 850 540 1140 690" stroke="${homeColor}" stroke-opacity="0.45" stroke-width="4"/>
     </g>
 
-    <!-- Subtle Side Team Monogram Watermarks -->
     <text x="165" y="255" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="140" fill="#ffffff" fill-opacity="0.06" letter-spacing="4">${awayInit}</text>
     <text x="1115" y="255" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="140" fill="#ffffff" fill-opacity="0.06" letter-spacing="4">${homeInit}</text>
   </svg>`;
@@ -192,8 +246,6 @@ export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league =
 
 /**
  * Generates a complete, self-contained 16:9 Broadcast Matchup Cover SVG for standalone blog cards
- * (ArticleCard, LeadArticleCard, LatestNews, /news/[slug]) when no unused real photo of those exact teams exists.
- * Ensures every single blog post has a 100% unique, believable image that accurately displays its exact teams & topic.
  */
 export function getSvgBlogArticleCover(params: {
   awayTeam: string;
@@ -287,33 +339,27 @@ export function getSvgBlogArticleCover(params: {
       </linearGradient>
     </defs>
 
-    <!-- Arena Background & Team Spotlights -->
     <rect width="1280" height="720" fill="url(#bg)"/>
     <rect width="1280" height="720" fill="url(#leftSpot)"/>
     <rect width="1280" height="720" fill="url(#rightSpot)"/>
 
-    <!-- Diagonal Broadcast Split Accent -->
     <polygon points="0,0 680,0 590,720 0,720" fill="${awayColor}" fill-opacity="0.12"/>
     <polygon points="680,0 1280,0 1280,720 590,720" fill="${homeColor}" fill-opacity="0.12"/>
 
-    <!-- Perspective Hardwood Court -->
     <polygon points="0,470 1280,470 1280,720 0,720" fill="url(#courtFloor)" opacity="0.92"/>
     <line x1="0" y1="470" x2="1280" y2="470" stroke="#fbbf24" stroke-opacity="0.45" stroke-width="3"/>
     <ellipse cx="640" cy="595" rx="170" ry="54" fill="none" stroke="#ffffff" stroke-opacity="0.2" stroke-width="3"/>
     <line x1="640" y1="470" x2="640" y2="720" stroke="#ffffff" stroke-opacity="0.22" stroke-width="3"/>
 
-    <!-- Top Broadcast Header Bar -->
     <rect x="64" y="42" width="1152" height="58" rx="14" fill="#090f1d" fill-opacity="0.86" stroke="#ffffff" stroke-opacity="0.14" stroke-width="1.5"/>
     <rect x="82" y="54" width="130" height="34" rx="8" fill="${pillColor}"/>
     <text x="147" y="77" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="16" fill="#090f1d" letter-spacing="1.5">${leagueClean}</text>
     <text x="234" y="77" font-family="Arial, sans-serif" font-weight="800" font-size="18" fill="#f8fafc" letter-spacing="1.5">${compClean}</text>
     <text x="1192" y="77" text-anchor="end" font-family="Arial, sans-serif" font-weight="800" font-size="15" fill="#fbbf24" letter-spacing="1.5">${centerBadgeTop}</text>
 
-    <!-- Giant Background Initials -->
     <text x="210" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="180" fill="#ffffff" fill-opacity="0.05">${awayInit}</text>
     <text x="1070" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="180" fill="#ffffff" fill-opacity="0.05">${homeInit}</text>
 
-    <!-- Away Team Card & Crest -->
     <g transform="translate(96, 150)">
       <rect width="390" height="360" rx="26" fill="#0b1324" fill-opacity="0.82" stroke="${awayColor}" stroke-opacity="0.65" stroke-width="2.5"/>
       <circle cx="195" cy="138" r="82" fill="url(#awayShield)" stroke="#ffffff" stroke-width="4" stroke-opacity="0.85"/>
@@ -324,7 +370,6 @@ export function getSvgBlogArticleCover(params: {
       <text x="195" y="310" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700" font-size="14" fill="#94a3b8" letter-spacing="2">AWAY CONTENDER</text>
     </g>
 
-    <!-- Center Score / VS Pod -->
     <g transform="translate(515, 225)">
       <rect width="250" height="210" rx="24" fill="#090f1d" fill-opacity="0.92" stroke="#fbbf24" stroke-opacity="0.55" stroke-width="2"/>
       <text x="125" y="54" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="14" fill="#fbbf24" letter-spacing="2">${centerBadgeTop}</text>
@@ -333,7 +378,6 @@ export function getSvgBlogArticleCover(params: {
       <text x="125" y="172" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="13" fill="#38bdf8" letter-spacing="1">${centerSubText}</text>
     </g>
 
-    <!-- Home Team Card & Crest -->
     <g transform="translate(794, 150)">
       <rect width="390" height="360" rx="26" fill="#0b1324" fill-opacity="0.82" stroke="${homeColor}" stroke-opacity="0.65" stroke-width="2.5"/>
       <circle cx="195" cy="138" r="82" fill="url(#homeShield)" stroke="#ffffff" stroke-width="4" stroke-opacity="0.85"/>
@@ -344,7 +388,6 @@ export function getSvgBlogArticleCover(params: {
       <text x="195" y="310" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700" font-size="14" fill="#94a3b8" letter-spacing="2">HOME CONTENDER</text>
     </g>
 
-    <!-- Bottom Arena Telemetry Strip -->
     <rect x="96" y="618" width="1088" height="54" rx="14" fill="#090f1d" fill-opacity="0.88" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
     <text x="640" y="651" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="16" fill="#e2e8f0" letter-spacing="1">${venueClean}  •  TIPOFF PH OFFICIAL COVERAGE</text>
   </svg>`;
@@ -365,17 +408,22 @@ export function handleImageErrorToCrest(event: Event, teamName: string) {
 }
 
 /**
- * Universal @error handler for 16:9 banner <img> tags
+ * Universal @error handler for 16:9 banner <img> tags.
+ * Falls back first to dynamic Bing search thumbnail if not yet tried, then to SVG matchup banner.
  */
 export function handleBannerImageError(event: Event, awayTeam: string, homeTeam: string, league = 'BASKETBALL') {
   const img = event?.target as HTMLImageElement | null;
   if (!img) return;
+  if (!img.dataset.bingFallbackTried && !img.src.includes('tse1.mm.bing.net')) {
+    img.dataset.bingFallbackTried = '1';
+    img.src = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(awayTeam + ' vs ' + homeTeam + ' ' + league + ' basketball latest')}&w=800&h=450&c=7&rs=1&p=0`;
+    return;
+  }
   img.src = getSvgMatchupBanner(awayTeam, homeTeam, league);
 }
 
 /**
  * 1. Normalize native image URLs from live88.eu.cc
- * If an image path from live88 is a relative URL (starts with /), automatically prefix it with https://live88.eu.cc
  */
 export function normalizeLive88ImageUrl(rawUrl: any): string {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
@@ -542,6 +590,18 @@ export function findExactMatchupOrTeamPhoto(
   }
 
   // 2. Philippine Leagues Exact Matchup Photos
+  if (hasBoth('ginebra', 'nlex') || hasBoth('gin kings', 'road warriors')) {
+    const p = tryPick('/img/articles/pba-ginebra-vs-nlex-araneta.jpg');
+    if (p) return p;
+  }
+  if (hasBoth('san miguel', 'magnolia')) {
+    const p = tryPick('/img/articles/san-miguel-beermen-dominance.webp');
+    if (p) return p;
+  }
+  if (hasBoth('san miguel', 'meralco')) {
+    const p = tryPick('/img/articles/san-miguel-beermen-semifinals-phcup.webp');
+    if (p) return p;
+  }
   if (hasBoth('maroons', 'archers') || hasBoth('up ', 'dlsu') || hasBoth('fighting maroons', 'la salle')) {
     const p1 = tryPick('/img/articles/uaap-season-87-finals-up-dlsu.webp');
     if (p1) return p1;
@@ -556,36 +616,8 @@ export function findExactMatchupOrTeamPhoto(
     const p = tryPick('/img/articles/uaap-feu-tamaraws-moa-arena.jpg');
     if (p) return p;
   }
-  if (hasBoth('ginebra', 'nlex') || hasBoth('gin kings', 'road warriors')) {
-    const p = tryPick('/img/articles/pba-ginebra-vs-nlex-araneta.jpg');
-    if (p) return p;
-  }
-  if (hasBoth('san miguel', 'magnolia')) {
-    const p = tryPick('/img/articles/san-miguel-beermen-dominance.webp');
-    if (p) return p;
-  }
-  if (hasBoth('san miguel', 'meralco')) {
-    const p = tryPick('/img/articles/san-miguel-beermen-semifinals-phcup.webp');
-    if (p) return p;
-  }
   if (hasBoth('batangas', 'san juan')) {
     const p = tryPick('/img/articles/mpbl-batangas-vs-san-juan.jpg');
-    if (p) return p;
-  }
-  if (hasBoth('pampanga', 'san juan') || combined.includes('pampanga')) {
-    const p = tryPick('/img/articles/pampanga-giant-lanterns-mpbl.webp');
-    if (p) return p;
-  }
-  if (combined.includes('abra weavers') || combined.includes('abra')) {
-    const p = tryPick('/img/articles/mpbl-playoffs-abra-weavers.webp');
-    if (p) return p;
-  }
-  if (combined.includes('ryukyu') || league.toLowerCase() === 'easl') {
-    const p = tryPick('/img/articles/easl-ryukyu-golden-kings-clash.jpg');
-    if (p) return p;
-  }
-  if (combined.includes('gilas') || combined.includes('philippines')) {
-    const p = tryPick('/img/articles/gilas-pilipinas-fiba-asia-cup.webp');
     if (p) return p;
   }
 
@@ -593,7 +625,105 @@ export function findExactMatchupOrTeamPhoto(
 }
 
 /**
- * Returns an exact team photo if available for this specific matchup, or a unique team-colored SVG Arena Banner
+ * RULE 3: Real-Time Latest Image Fetcher (ESPN + PBA + Search/Social Latest Thumbnails)
+ * Never reuses the same photo across multiple blog cards! Uses `usedImageUrls = new Set()` check
+ * so every single blog post has a 100% unique, real photo:
+ * 1. For NBA Blogs (ESPN Live Feed):
+ *    - Pulls the exact game action photo from ESPN (`competitions[0].headlines?.[0]?.video?.[0]?.thumbnail`)
+ *      or matching team article image from `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news`.
+ * 2. For PBA Blogs & Missing Action Photos (Live Web/News/Social Image Search):
+ *    - Queries the latest sports news & social media image thumbnail dynamically using the exact matchup query
+ *      (`https://tse1.mm.bing.net/th?q=${encodeURIComponent(match.away_team + ' vs ' + match.home_team + ' ' + match.league + ' basketball latest')}&w=800&h=450&c=7&rs=1&p=0`).
+ */
+export function getUniqueMatchImage(
+  match: UniqueMatchImageInput,
+  usedImageUrls: Set<string> = globalUsedImageUrls
+): string {
+  initImageResolverCache();
+
+  const awayTeam = String(
+    match.away_team || match.awayTeam || match.away?.name || 'Away Team'
+  ).trim();
+  const homeTeam = String(
+    match.home_team || match.homeTeam || match.home?.name || 'Home Team'
+  ).trim();
+
+  const isNba =
+    String(match.league || match.leagueId || '').toUpperCase().includes('NBA') ||
+    (isVerifiedNbaTeam(awayTeam) && isVerifiedNbaTeam(homeTeam));
+  const leagueLabel = isNba
+    ? 'NBA'
+    : String(match.league || match.leagueId || 'PBA').toUpperCase().includes('PBA')
+    ? 'PBA'
+    : String(match.league || match.leagueId || 'Basketball').toUpperCase();
+
+  const claimUrl = (candidate?: string): string => {
+    const clean = normalizeLive88ImageUrl(candidate);
+    if (!clean || clean.startsWith('data:image/svg')) return '';
+    if (!usedImageUrls.has(clean)) {
+      usedImageUrls.add(clean);
+      return clean;
+    }
+    return '';
+  };
+
+  // 1. For NBA Blogs (ESPN Live Feed):
+  // Pull exact game action photo from ESPN (competitions[0].headlines?.[0]?.video?.[0]?.thumbnail)
+  // or matching team article image from https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news
+  const espnDirect =
+    claimUrl(match.actionThumbnail) ||
+    claimUrl(match.espnThumbnail) ||
+    claimUrl(match.bannerUrl);
+  if (espnDirect) {
+    return espnDirect;
+  }
+
+  if (isNba) {
+    const awayCanonical = String(getCanonicalTeamName(awayTeam) || awayTeam).toLowerCase();
+    const homeCanonical = String(getCanonicalTeamName(homeTeam) || homeTeam).toLowerCase();
+    const candidatePool = [
+      ...(espnTeamNewsImages.get(awayCanonical) || []),
+      ...(espnTeamNewsImages.get(homeCanonical) || [])
+    ];
+    for (const newsImg of candidatePool) {
+      const picked = claimUrl(newsImg);
+      if (picked) return picked;
+    }
+  }
+
+  // Check exact dual-team photo for this specific matchup if unused
+  const exactCurated = findExactMatchupOrTeamPhoto(awayTeam, homeTeam, leagueLabel, usedImageUrls);
+  if (exactCurated) {
+    return exactCurated;
+  }
+
+  // 2. For PBA Blogs & Missing Action Photos (Live Web/News/Social Image Search):
+  // Query the latest sports news & social media image thumbnail dynamically using the exact matchup query
+  const searchQueries = [
+    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball latest`,
+    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball game`,
+    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball highlights`,
+    `${homeTeam} vs ${awayTeam} ${leagueLabel} basketball action`,
+    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball ${match.status || ''} ${match.id || match.slug || ''}`.trim()
+  ];
+
+  for (const q of searchQueries) {
+    const bingThumbUrl = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(q)}&w=800&h=450&c=7&rs=1&p=0`;
+    if (!usedImageUrls.has(bingThumbUrl)) {
+      usedImageUrls.add(bingThumbUrl);
+      return bingThumbUrl;
+    }
+  }
+
+  // Ultimate guaranteed-unique Bing search URL with seed counter
+  const uniqueFallbackQuery = `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball ${usedImageUrls.size + 1}`;
+  const finalBingUrl = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(uniqueFallbackQuery)}&w=800&h=450&c=7&rs=1&p=0`;
+  usedImageUrls.add(finalBingUrl);
+  return finalBingUrl;
+}
+
+/**
+ * Returns a unique match image for any league banner call
  */
 export function getDefaultLeagueBanner(
   awayTeam: string,
@@ -601,9 +731,10 @@ export function getDefaultLeagueBanner(
   league = 'Basketball',
   usedImages?: Set<string>
 ): string {
-  const exactPhoto = findExactMatchupOrTeamPhoto(awayTeam, homeTeam, league, usedImages);
-  if (exactPhoto) return exactPhoto;
-  return getSvgMatchupBanner(awayTeam, homeTeam, league);
+  return getUniqueMatchImage(
+    { away_team: awayTeam, home_team: homeTeam, league },
+    usedImages || globalUsedImageUrls
+  );
 }
 
 /**
@@ -739,8 +870,8 @@ export function resolveTeamLogoSync(teamName: string, providedLogo?: string): st
 }
 
 /**
- * Resolves a unique, matchup-specific 16:9 hero banner synchronously.
- * Never reuses generic league-wide images across multiple cards.
+ * Resolves a unique, matchup-specific 16:9 hero banner synchronously via getUniqueMatchImage.
+ * Never reuses the same fallback photo across multiple blog cards.
  */
 export function resolveMatchBannerSync(
   awayTeam: string,
@@ -749,32 +880,38 @@ export function resolveMatchBannerSync(
   explicitBanner?: string,
   usedImages?: Set<string>
 ): string {
-  initImageResolverCache();
-  const normExplicit = normalizeLive88ImageUrl(explicitBanner);
-  if (normExplicit && (!usedImages || !usedImages.has(normExplicit))) {
-    usedImages?.add(normExplicit);
-    return normExplicit;
-  }
-
-  // Check exact matchup / exact team action photos first
-  const exactPhoto = findExactMatchupOrTeamPhoto(awayTeam, homeTeam, league, usedImages);
-  if (exactPhoto) return exactPhoto;
-
-  const homeKey = String(getCanonicalTeamName(homeTeam) || homeTeam || '').toLowerCase().trim();
-  const awayKey = String(getCanonicalTeamName(awayTeam) || awayTeam || '').toLowerCase().trim();
-
-  const cachedHome = memoryBannerCache.get(homeKey) || memoryBannerCache.get(`topic:${homeKey}`);
-  if (cachedHome && (!usedImages || !usedImages.has(cachedHome))) {
-    usedImages?.add(cachedHome);
-    return cachedHome;
-  }
-
-  const cachedAway = memoryBannerCache.get(awayKey) || memoryBannerCache.get(`topic:${awayKey}`);
-  if (cachedAway && (!usedImages || !usedImages.has(cachedAway))) {
-    usedImages?.add(cachedAway);
-    return cachedAway;
-  }
-
-  // Return unique custom team-colored arena matchup graphic for this specific pair
-  return getSvgMatchupBanner(awayTeam, homeTeam, league);
+  return getUniqueMatchImage(
+    {
+      away_team: awayTeam,
+      home_team: homeTeam,
+      league,
+      bannerUrl: explicitBanner
+    },
+    usedImages || globalUsedImageUrls
+  );
 }
+
+/**
+ * Handles broken image tags by swapping in a bespoke SVG team crest or matchup broadcast graphic
+ */
+export function handleImageError(
+  event: Event,
+  type: 'logo' | 'banner' = 'banner',
+  teamOrTitle = 'Basketball',
+  league = 'NBA'
+): void {
+  const img = event?.target as HTMLImageElement | null;
+  if (!img || img.dataset.fallbackApplied === 'true') return;
+  img.dataset.fallbackApplied = 'true';
+
+  if (type === 'logo') {
+    img.src = getSvgBasketballCrest(teamOrTitle);
+    return;
+  }
+
+  const parts = String(teamOrTitle || '').split(/\s+vs\.?\s+/i);
+  const awayTeam = (parts[0] || teamOrTitle || 'Away Team').trim();
+  const homeTeam = (parts[1] || 'Home Team').trim();
+  img.src = getSvgMatchupBanner(awayTeam, homeTeam, league);
+}
+

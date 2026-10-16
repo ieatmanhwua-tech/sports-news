@@ -91,6 +91,7 @@ export interface GameScore {
   gameTimeUtc: string;
   venue: string;
   broadcast: string;
+  bannerUrl?: string;
   sourceName: string;
   updatedAt: string;
 }

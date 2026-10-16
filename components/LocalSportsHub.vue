@@ -8,6 +8,8 @@ import {
   fetchTopicImage,
   resolveTeamLogoSync,
   resolveMatchBannerSync,
+  getUniqueMatchImage,
+  registerEspnNewsArticles,
   handleImageErrorToCrest,
   handleBannerImageError,
   initImageResolverCache
@@ -18,6 +20,12 @@ import {
   PROMO_TARGET_URL,
   SEO_TABS,
   SEO_SLUG_TO_TAB_ID,
+  getStrictBlogLeague,
+  isStrictNbaOrPbaMatch,
+  isUpcomingWithinNext7DaysPht,
+  isCompletedWithinLast48HoursPht,
+  getEspnDateRangeParamsPht,
+  formatMatchDatePht,
   getMatchWatchSlug,
   getMatchPredictionSlug,
   getMatchReportSlug,
@@ -87,6 +95,7 @@ const PROXY_ENDPOINTS = {
 };
 
 interface EspnGameEntry {
+  id: string;
   homeName: string;
   awayName: string;
   homeLogo: string;
@@ -95,6 +104,8 @@ interface EspnGameEntry {
   awayScore: number;
   clock: string;
   state: 'pre' | 'in' | 'post';
+  startTime: string;
+  venue: string;
   actionThumbnail: string;
   topPlayerName: string;
   topPlayerStat: string;
@@ -481,6 +492,10 @@ function is24HourTipoffClock(clockStr?: string): boolean {
 function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[] {
   const results: EspnGameEntry[] = [];
   const newsArticles = Array.isArray(espnNewsJson?.articles) ? espnNewsJson.articles : [];
+  if (newsArticles.length > 0) {
+    registerEspnNewsArticles(newsArticles);
+  }
+  const usedNewsUrlsInBatch = new Set<string>();
   const events = Array.isArray(espnJson?.events) ? espnJson.events : [];
 
   for (const ev of events) {
@@ -503,22 +518,36 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
     const stateRaw = String(ev?.status?.type?.state || comp?.status?.type?.state || 'pre').toLowerCase();
     const state: 'pre' | 'in' | 'post' = stateRaw === 'in' ? 'in' : stateRaw === 'post' ? 'post' : 'pre';
     const shortDetail = String(ev?.status?.type?.shortDetail || comp?.status?.type?.shortDetail || '').trim();
+    const startTime = String(ev?.date || comp?.date || new Date().toISOString());
+    const venue = String(comp?.venue?.fullName || 'Official NBA Arena').trim();
 
-    // Extract latest game action thumbnail from competition headlines or matching ESPN /news article
+    // Extract latest game action thumbnail from competition headlines or matching ESPN /news article (strictly deduplicated)
     let actionThumbnail = String(
       comp?.headlines?.[0]?.video?.[0]?.thumbnail ||
       comp?.headlines?.[0]?.images?.[0]?.url ||
       ''
     ).trim();
 
+    if (actionThumbnail && usedNewsUrlsInBatch.has(actionThumbnail)) {
+      actionThumbnail = '';
+    } else if (actionThumbnail) {
+      usedNewsUrlsInBatch.add(actionThumbnail);
+    }
+
     if (!actionThumbnail && newsArticles.length > 0) {
       const homeKey = homeName.split(' ').pop()?.toLowerCase() || '';
       const awayKey = awayName.split(' ').pop()?.toLowerCase() || '';
       const matchingNews = newsArticles.find((art: any) => {
+        const imgCandidate = String(art?.images?.[0]?.url || '').trim();
+        if (!imgCandidate || usedNewsUrlsInBatch.has(imgCandidate)) return false;
         const text = `${art?.headline || ''} ${art?.description || ''}`.toLowerCase();
         return (homeKey && text.includes(homeKey)) || (awayKey && text.includes(awayKey));
       });
-      actionThumbnail = String(matchingNews?.images?.[0]?.url || '').trim();
+      const matchedUrl = String(matchingNews?.images?.[0]?.url || '').trim();
+      if (matchedUrl) {
+        usedNewsUrlsInBatch.add(matchedUrl);
+        actionThumbnail = matchedUrl;
+      }
     }
 
     // Extract top scorer player headshot & stat line
@@ -540,6 +569,7 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
     const overUnder = oddsObj?.overUnder ? `O/U ${oddsObj.overUnder}` : '';
 
     results.push({
+      id: String(ev?.id || `espn-${homeName}-${awayName}`),
       homeName,
       awayName,
       homeLogo,
@@ -548,6 +578,8 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
       awayScore,
       clock: shortDetail || (state === 'in' ? 'LIVE' : state === 'post' ? 'FINAL' : ''),
       state,
+      startTime,
+      venue,
       actionThumbnail,
       topPlayerName,
       topPlayerStat,
@@ -1234,6 +1266,9 @@ async function fetchLive88Data(force = false, isInitialLoad = false) {
 
   try {
     const querySuffix = force ? '&refresh=true' : '';
+    const { todayStr, next7DaysStr } = getEspnDateRangeParamsPht();
+    const espnRangeScoreboardUrl = `${LIVE88_ENDPOINTS.espnScoreboard}?dates=${todayStr}-${next7DaysStr}`;
+
     const [
       bootstrapRaw,
       matchesRaw,
@@ -1242,6 +1277,7 @@ async function fetchLive88Data(force = false, isInitialLoad = false) {
       scoresTodayRaw,
       livestreamRaw,
       espnRaw,
+      espnRangeRaw,
       espnNewsRaw,
       espnCollegeRaw,
       normalizedHubRes
@@ -1253,13 +1289,18 @@ async function fetchLive88Data(force = false, isInitialLoad = false) {
       fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresToday}${querySuffix}`).catch(() => null),
       fetchJsonNoStore(`${PROXY_ENDPOINTS.livestream}${querySuffix}`).catch(() => null),
       fetchJsonNoStore(LIVE88_ENDPOINTS.espnScoreboard).catch(() => null),
+      fetchJsonNoStore(espnRangeScoreboardUrl).catch(() => null),
       fetchJsonNoStore(LIVE88_ENDPOINTS.espnNbaNews).catch(() => null),
       fetchJsonNoStore(LIVE88_ENDPOINTS.espnCollegeScoreboard).catch(() => null),
       fetchJsonNoStore(`/api/ph-sports${force ? '?refresh=true' : ''}`).catch(() => null)
     ]);
 
+    const espnNbaEntries = [
+      ...parseEspnScoreboard(espnRangeRaw, espnNewsRaw),
+      ...parseEspnScoreboard(espnRaw, espnNewsRaw)
+    ];
     const espnList = [
-      ...parseEspnScoreboard(espnRaw, espnNewsRaw),
+      ...espnNbaEntries,
       ...parseEspnScoreboard(espnCollegeRaw)
     ];
 
@@ -1394,6 +1435,59 @@ async function fetchLive88Data(force = false, isInitialLoad = false) {
         } else {
           mergedMap.set(enriched.id, enriched);
         }
+      }
+    }
+
+    // Also ensure all upcoming & recently completed ESPN NBA scoreboard games (Today + Next 7 Days) are included
+    for (const eg of espnNbaEntries) {
+      const canonicalHome = getCanonicalTeamName(eg.homeName);
+      const canonicalAway = getCanonicalTeamName(eg.awayName);
+      if (!isVerifiedNbaTeam(canonicalHome) || !isVerifiedNbaTeam(canonicalAway)) continue;
+
+      const status: 'live' | 'scheduled' | 'finished' =
+        eg.state === 'in' ? 'live' : eg.state === 'post' ? 'finished' : 'scheduled';
+      const espnMatch: PhSportsMatch = {
+        id: `espn-nba-${eg.id}`,
+        leagueId: 'nba',
+        competition: 'NBA',
+        sport: 'nba',
+        status,
+        clock: eg.clock || (status === 'finished' ? 'FT' : status === 'live' ? 'LIVE' : ''),
+        startTime: eg.startTime,
+        startTimeIso: eg.startTime,
+        manilaTimeFormatted: formatMatchDatePht({ startTime: eg.startTime }),
+        venue: eg.venue || 'Official NBA Arena',
+        streamLabel: 'NBA League Pass / NBA TV PH',
+        hasStream: false,
+        scoreAvailable: true,
+        homeScore: eg.homeScore,
+        awayScore: eg.awayScore,
+        bannerUrl: eg.actionThumbnail || undefined,
+        espnSpread: eg.spread || undefined,
+        espnOverUnder: eg.overUnder || undefined,
+        topPlayerName: eg.topPlayerName || undefined,
+        topPlayerStat: eg.topPlayerStat || undefined,
+        topPlayerHeadshot: eg.topPlayerHeadshot || undefined,
+        home: {
+          id: `espn-home-${eg.id}`,
+          name: canonicalHome,
+          shortName: canonicalHome.split(' ').pop() || canonicalHome,
+          initials: canonicalHome.slice(0, 3).toUpperCase(),
+          logo: resolveTeamLogoSync(canonicalHome, eg.homeLogo)
+        },
+        away: {
+          id: `espn-away-${eg.id}`,
+          name: canonicalAway,
+          shortName: canonicalAway.split(' ').pop() || canonicalAway,
+          initials: canonicalAway.slice(0, 3).toUpperCase(),
+          logo: resolveTeamLogoSync(canonicalAway, eg.awayLogo)
+        },
+        sources: []
+      };
+
+      const existingKey = findMatchKey(espnMatch);
+      if (!existingKey) {
+        mergedMap.set(espnMatch.id, espnMatch);
       }
     }
 
@@ -1544,26 +1638,32 @@ const filteredMatches = computed(() => {
   return props.maxItems ? list.slice(0, props.maxItems) : list;
 });
 
-// 4A. Auto-Generated Pre-Game Prediction Blogs (for Upcoming & Live matches)
+// 4A. RULE 1: Auto-Generated Pre-Game Prediction Blogs (STRICTLY NBA & PBA ONLY — Today + Next 7 Days in Asia/Manila PHT)
 const predictionBlogs = computed<PredictionBlogArticle[]>(() => {
-  // Touch imageCacheVersion so resolved SportsDB/Wikipedia banners reactively update
   void imageCacheVersion.value;
 
-  const upcomingAndLive = allMatchesList.value.filter(m => m.status === 'live' || m.status === 'scheduled');
-  const pool = upcomingAndLive.length > 0 ? upcomingAndLive : allMatchesList.value;
+  // Strictly filter for verified NBA and PBA matches only (completely exclude WNBA, Slovenia Cup, FIBA WBLA, MPBL, UAAP, NCAA, or 2024/old games)
+  const upcomingNbaAndPba = allMatchesList.value.filter(
+    m => isStrictNbaOrPbaMatch(m) && isUpcomingWithinNext7DaysPht(m)
+  );
+  const fallbackPool = allMatchesList.value.filter(
+    m => isStrictNbaOrPbaMatch(m) && m.status !== 'finished'
+  );
+  const pool = upcomingNbaAndPba.length > 0 ? upcomingNbaAndPba : fallbackPool;
   const usedPredictionImages = new Set<string>();
 
-  let items = pool.map(m =>
-    generatePredictionBlogForMatch(
+  let items = pool.map(m => {
+    const strictLeague = getStrictBlogLeague(m) || 'NBA';
+    return generatePredictionBlogForMatch(
       m,
-      getMatchLeagueInfo(m).league,
+      strictLeague,
       {
         spread: m.espnSpread,
         overUnder: m.espnOverUnder
       },
       usedPredictionImages
-    )
-  );
+    );
+  });
 
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase().trim();
@@ -1578,37 +1678,33 @@ const predictionBlogs = computed<PredictionBlogArticle[]>(() => {
   return items;
 });
 
-// 4B. Auto-Generated Post-Game Highlight Reports (for Final matches, plus all matches fallback)
-const blogSubFilter = ref<'all' | 'live' | 'finished' | 'scheduled' | 'nba' | 'pba' | 'mpbl' | 'collegiate'>('all');
+// 4B. RULE 2: Auto-Generated Post-Game Highlight & Short Recap Blogs (STRICTLY NBA & PBA Final/Completed from last 48 hours)
+const blogSubFilter = ref<'all' | 'nba' | 'pba'>('all');
 
 const highlightReports = computed<HighlightReportArticle[]>(() => {
   void imageCacheVersion.value;
 
-  const finalMatches = allMatchesList.value.filter(m => m.status === 'finished');
-  const basePool = blogSubFilter.value === 'all' && finalMatches.length > 0
-    ? [...finalMatches, ...allMatchesList.value.filter(m => m.status !== 'finished')]
-    : [...allMatchesList.value];
-  const usedReportImages = new Set<string>();
-
-  let reports = basePool.map(m =>
-    generateHighlightReportForMatch(m, getMatchLeagueInfo(m).league, usedReportImages)
+  const recentFinalNbaAndPba = allMatchesList.value.filter(
+    m => isStrictNbaOrPbaMatch(m) && isCompletedWithinLast48HoursPht(m)
   );
+  const allFinalNbaAndPba = allMatchesList.value.filter(
+    m => isStrictNbaOrPbaMatch(m) && m.status === 'finished'
+  );
+  const basePool = recentFinalNbaAndPba.length > 0 ? recentFinalNbaAndPba : allFinalNbaAndPba;
+
+  // Seed with images already used by predictionBlogs so no photo is ever shared across prediction & recap cards
+  const usedReportImages = new Set<string>(predictionBlogs.value.map(p => p.bannerUrl));
+
+  let reports = basePool.map(m => {
+    const strictLeague = getStrictBlogLeague(m) || 'NBA';
+    return generateHighlightReportForMatch(m, strictLeague, usedReportImages);
+  });
 
   const bf = blogSubFilter.value;
-  if (bf === 'live') {
-    reports = reports.filter(r => r.status === 'live');
-  } else if (bf === 'finished') {
-    reports = reports.filter(r => r.status === 'finished');
-  } else if (bf === 'scheduled') {
-    reports = reports.filter(r => r.status === 'scheduled');
-  } else if (bf === 'nba') {
-    reports = reports.filter(r => r.league.toLowerCase() === 'nba');
+  if (bf === 'nba') {
+    reports = reports.filter(r => r.league === 'NBA');
   } else if (bf === 'pba') {
-    reports = reports.filter(r => r.league.toLowerCase() === 'pba');
-  } else if (bf === 'mpbl') {
-    reports = reports.filter(r => r.league.toLowerCase() === 'mpbl');
-  } else if (bf === 'collegiate') {
-    reports = reports.filter(r => ['uaap', 'ncaa'].includes(r.league.toLowerCase()));
+    reports = reports.filter(r => r.league === 'PBA');
   }
 
   if (searchQuery.value.trim()) {
@@ -2148,86 +2244,105 @@ watch(
     <!-- ACTIVE INDIVIDUAL PRE-GAME PREDICTION BLOG VIEW -->
     <div v-if="activePrediction" class="p-2.5 sm:p-6 bg-slate-950/60 border-b border-slate-800">
       <article class="max-w-4xl mx-auto bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-xl">
-        <!-- Tier 3 Dynamic "VS Matchup" Graphic Card (Responsive height on mobile, 16:9 on desktop) -->
-        <div class="relative min-h-[210px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+        <!-- Rule 3 Broadcast Thumbnail with Corner Overlays (League Tag, TipOff Ph Watermark, Away Logo, Home Logo) -->
+        <div class="relative min-h-[220px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
           <img
             :src="activePrediction.bannerUrl"
-            :alt="`${activePrediction.awayTeam} vs ${activePrediction.homeTeam} ${activePrediction.league} Prediction Odds & Picks Today`"
+            :alt="`${activePrediction.awayTeam} vs ${activePrediction.homeTeam} ${activePrediction.league} Prediction Odds & Picks`"
             width="1280"
             height="720"
             loading="lazy"
             decoding="async"
             referrerpolicy="no-referrer"
             @error="handleBannerImageError($event, activePrediction.awayTeam, activePrediction.homeTeam, activePrediction.league)"
-            class="absolute inset-0 w-full h-full object-cover opacity-50"
+            class="absolute inset-0 w-full h-full object-cover opacity-80"
           />
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/65 to-slate-950/35"></div>
-          <div class="relative z-10 p-3 sm:p-6 flex flex-col justify-between gap-2.5 sm:gap-3 flex-1">
-            <div class="flex flex-wrap items-center justify-between gap-1.5">
-              <span class="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded bg-amber-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider">
-                {{ activePrediction.league }} · Prediction &amp; Odds
-              </span>
-              <a
-                :href="getSeoTabHref('predictions')"
-                @click.prevent="closePredictionBlog(true)"
-                class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 sm:px-3 py-1 rounded-lg border border-slate-700 transition-colors"
-              >
-                <ArrowLeft class="w-3.5 h-3.5" />
-                <span>All Predictions</span>
-              </a>
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
+          <div class="relative z-10 p-3 sm:p-5 flex flex-col justify-between gap-3 flex-1">
+            <!-- Top Corners: League Tag Badge (Top-Left) + TipOff Ph Watermark & Back Link (Top-Right) -->
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                <span class="px-2.5 py-1 rounded bg-amber-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
+                  {{ activePrediction.badge }}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 border border-amber-400/40 text-[10px] sm:text-xs font-black text-amber-300 shadow">
+                  <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3.5 h-3.5 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                  <span>TipOff Ph</span>
+                </span>
+                <a
+                  :href="getSeoTabHref('predictions')"
+                  @click.prevent="closePredictionBlog(true)"
+                  class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
+                >
+                  <ArrowLeft class="w-3.5 h-3.5" />
+                  <span>All Predictions</span>
+                </a>
+              </div>
             </div>
 
-            <div class="grid grid-cols-3 items-center gap-1.5 sm:gap-3 my-auto py-1 sm:py-2">
-              <div class="flex flex-col items-center text-center space-y-1.5 min-w-0">
+            <!-- Bottom Corners: Official Away Logo (Bottom-Left), Score/Time Bug (Center), Official Home Logo (Bottom-Right) -->
+            <div class="flex items-end justify-between gap-2 pt-6">
+              <div class="flex items-center gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[42%]">
                 <img
                   :src="activePrediction.awayLogo"
-                  :alt="`${activePrediction.awayTeam} Official Basketball Logo`"
-                  width="64"
-                  height="64"
+                  :alt="`${activePrediction.awayTeam} Official Logo`"
+                  width="48"
+                  height="48"
                   loading="lazy"
                   decoding="async"
                   referrerpolicy="no-referrer"
                   @error="handleImageErrorToCrest($event, activePrediction.awayTeam)"
-                  class="w-11 h-11 sm:w-16 sm:h-16 object-contain rounded-xl bg-white p-1 sm:p-1.5 shadow-lg shrink-0"
+                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
                 />
-                <span class="text-xs sm:text-sm font-black text-white leading-tight line-clamp-2 break-words">{{ activePrediction.awayTeam }}</span>
+                <div class="min-w-0">
+                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Away</div>
+                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activePrediction.awayTeam }}</div>
+                </div>
               </div>
-              <div class="flex flex-col items-center justify-center text-center px-1 min-w-0">
-                <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-[10px] sm:text-xs font-black uppercase tracking-widest text-amber-300">VS</span>
-                <span class="text-xs sm:text-base font-mono font-black text-white mt-1 whitespace-nowrap">{{ activePrediction.taleOfTheTape.projectedScore }}</span>
-                <span class="text-[10px] sm:text-xs text-cyan-300 font-bold mt-0.5 whitespace-nowrap">{{ activePrediction.taleOfTheTape.overUnder }}</span>
+
+              <div class="flex flex-col items-center justify-center text-center px-2.5 py-1.5 rounded-xl bg-slate-950/90 border border-amber-400/40 shrink-0">
+                <span class="text-[10px] font-black uppercase tracking-widest text-amber-400">VS · {{ activePrediction.league }}</span>
+                <span class="text-[11px] sm:text-xs font-mono font-bold text-white whitespace-nowrap">{{ activePrediction.matchDatePHT }}</span>
               </div>
-              <div class="flex flex-col items-center text-center space-y-1.5 min-w-0">
+
+              <div class="flex items-center justify-end gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[42%] text-right">
+                <div class="min-w-0">
+                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Home</div>
+                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activePrediction.homeTeam }}</div>
+                </div>
                 <img
                   :src="activePrediction.homeLogo"
-                  :alt="`${activePrediction.homeTeam} Official Basketball Logo`"
-                  width="64"
-                  height="64"
+                  :alt="`${activePrediction.homeTeam} Official Logo`"
+                  width="48"
+                  height="48"
                   loading="lazy"
                   decoding="async"
                   referrerpolicy="no-referrer"
                   @error="handleImageErrorToCrest($event, activePrediction.homeTeam)"
-                  class="w-11 h-11 sm:w-16 sm:h-16 object-contain rounded-xl bg-white p-1 sm:p-1.5 shadow-lg shrink-0"
+                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
                 />
-                <span class="text-xs sm:text-sm font-black text-white leading-tight line-clamp-2 break-words">{{ activePrediction.homeTeam }}</span>
               </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-center gap-1.5 text-center text-[11px] sm:text-xs text-slate-300 font-medium">
-              <span class="px-2 py-0.5 rounded bg-slate-900/85 border border-slate-700/80 text-amber-300 font-mono font-bold">
-                Spread: {{ activePrediction.taleOfTheTape.spread }}
-              </span>
-              <span class="truncate">{{ activePrediction.venue }} · {{ activePrediction.manilaTime }}</span>
             </div>
           </div>
         </div>
 
         <div class="p-3.5 sm:p-7 space-y-4 sm:space-y-5">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider">
+              {{ activePrediction.badge }}
+            </span>
+            <span class="text-xs text-slate-400 font-medium">{{ activePrediction.venue }}</span>
+          </div>
+
           <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
             {{ activePrediction.headline }}
           </h3>
 
-          <!-- Betting Tale of the Tape Table -->
+          <!-- Rule 1 Betting Tale of the Tape Table: Tip-Off Time (PHT), Spread, Over/Under Total, Projected Win Probability % -->
           <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
             <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
               Betting Tale of the Tape
@@ -2235,160 +2350,186 @@ watch(
             <table class="w-full text-left text-xs sm:text-sm font-mono tabular-nums">
               <tbody class="divide-y divide-slate-800/80">
                 <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Projected Winner</th>
-                  <td class="py-2 text-right font-bold text-emerald-400 break-words">{{ activePrediction.taleOfTheTape.projectedWinner }}</td>
+                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
+                  <td class="py-2 text-right font-bold text-slate-100">{{ activePrediction.taleOfTheTape.tipOffTimePht }}</td>
                 </tr>
                 <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Win Probability %</th>
-                  <td class="py-2 text-right font-bold text-white">{{ activePrediction.taleOfTheTape.winProbability }}</td>
-                </tr>
-                <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Point Spread</th>
+                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Spread</th>
                   <td class="py-2 text-right font-bold text-amber-400">{{ activePrediction.taleOfTheTape.spread }}</td>
                 </tr>
                 <tr>
                   <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Over/Under Total</th>
                   <td class="py-2 text-right font-bold text-cyan-300">{{ activePrediction.taleOfTheTape.overUnder }}</td>
                 </tr>
+                <tr>
+                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
+                  <td class="py-2 text-right font-bold text-emerald-400">{{ activePrediction.taleOfTheTape.winProbability }}</td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          <!-- Top Player Spotlight with Headshot -->
-          <div v-if="activePrediction.topPlayerName" class="flex items-center gap-3 p-3 sm:p-3.5 rounded-xl bg-slate-950/90 border border-slate-800">
-            <img
-              :src="activePrediction.topPlayerHeadshot || activePrediction.homeLogo"
-              :alt="`${activePrediction.topPlayerName} Player Headshot`"
-              width="48"
-              height="48"
-              loading="lazy"
-              decoding="async"
-              referrerpolicy="no-referrer"
-              @error="handleImageErrorToCrest($event, activePrediction.topPlayerName || activePrediction.homeTeam)"
-              class="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover bg-slate-800 border border-amber-500/40 shrink-0"
-            />
-            <div class="min-w-0">
-              <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-400">Key Player to Watch</div>
-              <div class="text-xs sm:text-sm font-extrabold text-white truncate">{{ activePrediction.topPlayerName }}</div>
-              <div class="text-[11px] sm:text-xs text-slate-300 font-mono truncate">{{ activePrediction.topPlayerStat }}</div>
-            </div>
-          </div>
-
-          <!-- 2-Paragraph Matchup Analysis -->
+          <!-- 2-Paragraph Pre-Game Analysis -->
           <div class="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
             <p v-for="(para, idx) in activePrediction.paragraphs" :key="idx">
               {{ para }}
             </p>
           </div>
 
-          <!-- Bet Now CTA Box -->
+          <!-- Rule 1: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
           <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p class="text-xs sm:text-base font-extrabold text-white leading-snug">
-                Ready for tip-off? Lock in live basketball odds for {{ activePrediction.awayTeam }} vs {{ activePrediction.homeTeam }}
+                Lock in live {{ activePrediction.league }} odds for {{ activePrediction.awayTeam }} vs {{ activePrediction.homeTeam }}
               </p>
               <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                Live spreads, moneylines, and player props updated every possession.
+                Official {{ activePrediction.league }} spreads, totals, and live in-play markets in PHT.
               </p>
             </div>
-            <a
-              :href="PROMO_URL"
-              target="_blank"
-              rel="nofollow sponsored noopener"
-              class="w-full sm:w-auto text-center px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
-            >
-              Bet Now
-            </a>
+            <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
+              >
+                Bet Now
+              </a>
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
+              >
+                Play Now
+              </a>
+            </div>
           </div>
         </div>
       </article>
     </div>
 
-    <!-- ACTIVE INDIVIDUAL POST-GAME HIGHLIGHT BLOG REPORT VIEW -->
+    <!-- ACTIVE INDIVIDUAL POST-GAME HIGHLIGHT & SHORT RECAP BLOG VIEW (Text-Only, No Video) -->
     <div v-else-if="activeReport" class="p-2.5 sm:p-6 bg-slate-950/60 border-b border-slate-800">
       <article class="max-w-4xl mx-auto bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-xl">
-        <!-- Tier 3 Dynamic "VS Matchup" Graphic Card (Responsive height on mobile, 16:9 on desktop) -->
-        <div class="relative min-h-[210px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+        <!-- Rule 3 Broadcast Thumbnail with Corner Overlays (League Tag, TipOff Ph Watermark, Away Logo, Home Logo) -->
+        <div class="relative min-h-[220px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
           <img
             :src="activeReport.bannerUrl"
-            :alt="`${activeReport.awayTeam} vs ${activeReport.homeTeam} ${activeReport.league} Live Today Highlights`"
+            :alt="`${activeReport.awayTeam} vs ${activeReport.homeTeam} ${activeReport.league} Game Highlights & Short Recap`"
             width="1280"
             height="720"
             loading="lazy"
             decoding="async"
             referrerpolicy="no-referrer"
             @error="handleBannerImageError($event, activeReport.awayTeam, activeReport.homeTeam, activeReport.league)"
-            class="absolute inset-0 w-full h-full object-cover opacity-50"
+            class="absolute inset-0 w-full h-full object-cover opacity-80"
           />
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/65 to-slate-950/35"></div>
-          <div class="relative z-10 p-3.5 sm:p-6 flex flex-col justify-between gap-3 flex-1">
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
+          <div class="relative z-10 p-3.5 sm:p-5 flex flex-col justify-between gap-3 flex-1">
+            <!-- Top Corners: Badge & League Tag (Top-Left) + TipOff Ph Watermark & Back Link (Top-Right) -->
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded bg-amber-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider">
-                {{ activeReport.league }} · Box Score Recap
-              </span>
-              <a
-                :href="getSeoTabHref('highlights')"
-                @click.prevent="closeHighlightReport(true)"
-                class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 sm:px-3 py-1 rounded-lg border border-slate-700 transition-colors"
-              >
-                <ArrowLeft class="w-3.5 h-3.5" />
-                <span>All Highlight Reports</span>
-              </a>
+              <div class="flex items-center gap-1.5">
+                <span class="px-2.5 py-1 rounded bg-emerald-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
+                  {{ activeReport.badge }}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 border border-amber-400/40 text-[10px] sm:text-xs font-black text-amber-300 shadow">
+                  <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3.5 h-3.5 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                  <span>TipOff Ph</span>
+                </span>
+                <a
+                  :href="getSeoTabHref('highlights')"
+                  @click.prevent="closeHighlightReport(true)"
+                  class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
+                >
+                  <ArrowLeft class="w-3.5 h-3.5" />
+                  <span>All Final Recaps</span>
+                </a>
+              </div>
             </div>
 
-            <div class="grid grid-cols-3 items-center gap-2 sm:gap-3 my-auto py-1 sm:py-2">
-              <div class="flex flex-col items-center text-center space-y-1.5 min-w-0">
+            <!-- Bottom Corners: Official Away Logo (Bottom-Left), Final Score Bug (Center), Official Home Logo (Bottom-Right) -->
+            <div class="flex items-end justify-between gap-2 pt-6">
+              <div class="flex items-center gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[40%]">
                 <img
                   :src="activeReport.awayLogo"
-                  :alt="`${activeReport.awayTeam} Official Basketball Logo`"
-                  width="64"
-                  height="64"
+                  :alt="`${activeReport.awayTeam} Official Logo`"
+                  width="48"
+                  height="48"
                   loading="lazy"
                   decoding="async"
                   referrerpolicy="no-referrer"
                   @error="handleImageErrorToCrest($event, activeReport.awayTeam)"
-                  class="w-11 h-11 sm:w-16 sm:h-16 object-contain rounded-xl bg-white p-1 sm:p-1.5 shadow-lg shrink-0"
+                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
                 />
-                <span class="text-[11px] sm:text-sm font-black text-white leading-tight line-clamp-2 break-words">{{ activeReport.awayTeam }}</span>
+                <div class="min-w-0">
+                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Away</div>
+                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activeReport.awayTeam }}</div>
+                </div>
               </div>
-              <div class="flex flex-col items-center justify-center text-center px-1 min-w-0">
-                <span class="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-amber-400">FINAL SCORE</span>
-                <span class="text-lg sm:text-3xl font-mono font-black text-white mt-0.5 whitespace-nowrap">
+
+              <div class="flex flex-col items-center justify-center text-center px-3 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/40 shrink-0">
+                <span class="text-[10px] font-black uppercase tracking-widest text-emerald-400">FINAL</span>
+                <span class="text-sm sm:text-xl font-mono font-black text-white whitespace-nowrap">
                   {{ activeReport.awayScore }} – {{ activeReport.homeScore }}
                 </span>
               </div>
-              <div class="flex flex-col items-center text-center space-y-1.5 min-w-0">
+
+              <div class="flex items-center justify-end gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[40%] text-right">
+                <div class="min-w-0">
+                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Home</div>
+                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activeReport.homeTeam }}</div>
+                </div>
                 <img
                   :src="activeReport.homeLogo"
-                  :alt="`${activeReport.homeTeam} Official Basketball Logo`"
-                  width="64"
-                  height="64"
+                  :alt="`${activeReport.homeTeam} Official Logo`"
+                  width="48"
+                  height="48"
                   loading="lazy"
                   decoding="async"
                   referrerpolicy="no-referrer"
                   @error="handleImageErrorToCrest($event, activeReport.homeTeam)"
-                  class="w-11 h-11 sm:w-16 sm:h-16 object-contain rounded-xl bg-white p-1 sm:p-1.5 shadow-lg shrink-0"
+                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
                 />
-                <span class="text-[11px] sm:text-sm font-black text-white leading-tight line-clamp-2 break-words">{{ activeReport.homeTeam }}</span>
               </div>
-            </div>
-
-            <div class="text-center text-[11px] sm:text-xs text-slate-300 font-medium truncate">
-              {{ activeReport.venue }} · {{ activeReport.manilaTime }}
             </div>
           </div>
         </div>
 
         <div class="p-3.5 sm:p-7 space-y-4 sm:space-y-5">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded bg-emerald-400 text-slate-950 text-xs font-black uppercase tracking-wider">
+              {{ activeReport.badge }}
+            </span>
+            <span class="text-xs text-slate-400 font-medium">{{ activeReport.venue }} · {{ activeReport.manilaTime }}</span>
+          </div>
+
           <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
             {{ activeReport.headline }}
           </h3>
 
-          <p class="text-xs sm:text-base text-slate-200 font-medium leading-relaxed">
-            {{ activeReport.summaryLead }}
-          </p>
+          <!-- Rule 2 Short Punchy Recap (2 Paragraphs) -->
+          <div class="space-y-3 text-xs sm:text-sm text-slate-200 leading-relaxed">
+            <p v-for="(para, idx) in activeReport.paragraphs" :key="idx">
+              {{ para }}
+            </p>
+          </div>
 
-          <!-- Quarter-by-Quarter (Q1-Q4 + Final) HTML Box Score Table -->
+          <!-- Rule 2 Top Player Highlights (NBA top scorers/rebounders/assists OR PBA quarter-by-quarter team scoring breakdown) -->
+          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-2.5">
+            <h4 class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400">
+              Top Player Highlights ({{ activeReport.league }})
+            </h4>
+            <ul class="space-y-1.5 text-xs sm:text-sm text-slate-300 list-disc list-inside">
+              <li v-for="(pt, idx) in activeReport.topPlayerHighlights" :key="idx">{{ pt }}</li>
+            </ul>
+          </div>
+
+          <!-- Rule 2 Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
           <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
             <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
               Quarter-by-Quarter Box Score Table
@@ -2398,17 +2539,17 @@ watch(
                 <tr class="border-b border-slate-800 text-slate-400">
                   <th class="py-2 pr-2 font-sans font-bold text-slate-300">Team</th>
                   <th v-for="q in activeReport.quarters" :key="q.label" class="py-2 px-1.5 sm:px-2 text-center">{{ q.label }}</th>
-                  <th class="py-2 pl-2 text-right font-bold text-amber-400">Final</th>
+                  <th class="py-2 pl-2 text-right font-bold text-amber-400">FINAL</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/70">
                 <tr>
-                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[110px] sm:max-w-none">{{ activeReport.awayTeam }}</td>
+                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[120px] sm:max-w-none">{{ activeReport.awayTeam }}</td>
                   <td v-for="q in activeReport.quarters" :key="`a-${q.label}`" class="py-2 px-1.5 sm:px-2 text-center text-slate-300">{{ q.away }}</td>
                   <td class="py-2 pl-2 text-right font-extrabold text-amber-400">{{ activeReport.awayScore }}</td>
                 </tr>
                 <tr>
-                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[110px] sm:max-w-none">{{ activeReport.homeTeam }}</td>
+                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[120px] sm:max-w-none">{{ activeReport.homeTeam }}</td>
                   <td v-for="q in activeReport.quarters" :key="`h-${q.label}`" class="py-2 px-1.5 sm:px-2 text-center text-slate-300">{{ q.home }}</td>
                   <td class="py-2 pl-2 text-right font-extrabold text-amber-400">{{ activeReport.homeScore }}</td>
                 </tr>
@@ -2416,72 +2557,48 @@ watch(
             </table>
           </div>
 
-          <!-- 2-3 Paragraph Game Summary -->
-          <div class="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
-            <p v-for="(para, idx) in activeReport.paragraphs" :key="idx">
-              {{ para }}
-            </p>
-          </div>
-
-          <!-- Bulleted Top Player Highlights with Player Headshot -->
-          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-3">
-            <div class="flex items-center gap-3">
-              <img
-                :src="activeReport.topPlayerHeadshot || activeReport.homeLogo"
-                :alt="`${activeReport.topPlayerName || activeReport.homeTeam} Player Headshot`"
-                width="44"
-                height="44"
-                loading="lazy"
-                decoding="async"
-                referrerpolicy="no-referrer"
-                @error="handleImageErrorToCrest($event, activeReport.topPlayerName || activeReport.homeTeam)"
-                class="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover bg-slate-800 border border-amber-500/40 shrink-0"
-              />
-              <div class="min-w-0">
-                <h4 class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400">Top Player Highlights</h4>
-                <p v-if="activeReport.topPlayerName" class="text-xs text-slate-300 font-semibold truncate">
-                  {{ activeReport.topPlayerName }} ({{ activeReport.topPlayerStat }})
-                </p>
-              </div>
-            </div>
-            <ul class="space-y-1.5 text-xs sm:text-sm text-slate-300 list-disc list-inside">
-              <li v-for="(pt, idx) in activeReport.topPlayerHighlights" :key="idx">{{ pt }}</li>
-            </ul>
-          </div>
-
-          <!-- Promo Callout Box Inside Highlight Blog Report -->
+          <!-- Rule 2: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
           <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p class="text-xs sm:text-base font-extrabold text-white leading-snug">
-                Ready for the next tip-off? Get the best live basketball odds
+                Ready for the next {{ activeReport.league }} tip-off? Get live basketball odds now
               </p>
               <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                Live NBA, PBA, MPBL &amp; collegiate spreads and in-play markets updated every possession.
+                Live NBA &amp; PBA spreads, totals, and in-play markets updated every possession.
               </p>
             </div>
-            <a
-              :href="PROMO_URL"
-              target="_blank"
-              rel="nofollow sponsored noopener"
-              title="Bet on Live Games — Play at Bybet"
-              class="w-full sm:w-auto text-center px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
-            >
-              Bet Now
-            </a>
+            <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
+              >
+                Bet Now
+              </a>
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
+              >
+                Play Now
+              </a>
+            </div>
           </div>
         </div>
       </article>
     </div>
 
-    <!-- DEDICATED TAB 1: PREDICTIONS & PICKS TAB VIEW -->
+    <!-- DEDICATED TAB 1: PREDICTIONS & PICKS TAB VIEW (STRICTLY NBA & PBA ONLY) -->
     <div v-else-if="selectedLeague === 'predictions'" class="p-4 sm:p-6 space-y-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
         <div>
           <h2 class="text-base sm:text-lg font-black text-white">
-            Auto-Generated Pre-Game Basketball Predictions, Odds &amp; Picks Today
+            NBA &amp; PBA Pre-Game Predictions, Odds &amp; Picks (Today + Next 7 Days PHT)
           </h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            100% automated Tale of the Tape betting odds, win probabilities, and matchup breakdowns for upcoming &amp; live games.
+            Strictly verified NBA and PBA pre-game predictions, Tale of the Tape betting odds, spreads, Over/Under totals, and projected win probabilities.
           </p>
         </div>
       </div>
@@ -2490,64 +2607,70 @@ watch(
         <article
           v-for="pred in predictionBlogs"
           :key="pred.slug"
-          class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl overflow-hidden flex flex-col justify-between transition-all"
+          class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl overflow-hidden flex flex-col justify-between transition-all group"
         >
           <div>
-            <!-- Tier 3 Dynamic "VS Matchup" Graphic Card (Responsive on mobile, 16:9 on desktop) -->
-            <div class="relative min-h-[190px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+            <!-- Rule 3 Thumbnail with Clean Corner Overlays (Away Logo, Home Logo, TipOff Ph Watermark, League Tag) -->
+            <div class="relative min-h-[195px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
               <img
                 :src="pred.bannerUrl"
-                :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks Today`"
-                width="640"
-                height="360"
+                :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks`"
+                width="800"
+                height="450"
                 loading="lazy"
                 decoding="async"
                 referrerpolicy="no-referrer"
                 @error="handleBannerImageError($event, pred.awayTeam, pred.homeTeam, pred.league)"
-                class="absolute inset-0 w-full h-full object-cover opacity-50"
+                class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
               />
-              <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30"></div>
+              <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
               <div class="relative z-10 p-3 sm:p-3.5 flex flex-col justify-between gap-2 flex-1">
-                <div class="flex items-center justify-between text-[11px] font-bold">
-                  <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase">{{ pred.league }}</span>
-                  <span class="text-slate-200 truncate ml-2">{{ pred.manilaTime }}</span>
+                <!-- Top Corners: Badge (Top-Left) + TipOff Ph Watermark (Top-Right) -->
+                <div class="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold">
+                  <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase shadow truncate">{{ pred.badge }}</span>
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
+                    <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                    <span>TipOff Ph</span>
+                  </span>
                 </div>
-                <div class="grid grid-cols-3 items-center gap-2 my-auto py-1">
-                  <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                <!-- Bottom Corners: Away Logo (Bottom-Left), VS/Time (Bottom-Center), Home Logo (Bottom-Right) -->
+                <div class="flex items-end justify-between gap-1.5 pt-6">
+                  <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%]">
                     <img
                       :src="pred.awayLogo"
                       :alt="`${pred.awayTeam} Official Logo`"
-                      width="44"
-                      height="44"
+                      width="36"
+                      height="36"
                       loading="lazy"
                       decoding="async"
                       referrerpolicy="no-referrer"
                       @error="handleImageErrorToCrest($event, pred.awayTeam)"
-                      class="w-10 h-10 sm:w-11 sm:h-11 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
                     />
-                    <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ pred.awayTeam }}</span>
+                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.awayTeam }}</span>
                   </div>
-                  <div class="text-center px-1 min-w-0">
-                    <div class="text-[10px] font-black text-amber-400 uppercase">VS</div>
-                    <div class="text-xs font-mono font-black text-white whitespace-nowrap">{{ pred.taleOfTheTape.projectedScore }}</div>
+
+                  <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-amber-400/35 shrink-0">
+                    <div class="text-[9px] font-black text-amber-400 uppercase">VS</div>
+                    <div class="text-[10px] font-mono font-bold text-slate-200 whitespace-nowrap">{{ pred.matchDatePHT }}</div>
                   </div>
-                  <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                  <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%] text-right">
+                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.homeTeam }}</span>
                     <img
                       :src="pred.homeLogo"
                       :alt="`${pred.homeTeam} Official Logo`"
-                      width="44"
-                      height="44"
+                      width="36"
+                      height="36"
                       loading="lazy"
                       decoding="async"
                       referrerpolicy="no-referrer"
                       @error="handleImageErrorToCrest($event, pred.homeTeam)"
-                      class="w-10 h-10 sm:w-11 sm:h-11 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
                     />
-                    <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ pred.homeTeam }}</span>
                   </div>
-                </div>
-                <div class="text-[11px] text-center text-cyan-300 font-mono font-bold truncate">
-                  {{ pred.taleOfTheTape.spread }} · {{ pred.taleOfTheTape.overUnder }}
                 </div>
               </div>
             </div>
@@ -2563,38 +2686,38 @@ watch(
                 </a>
               </h3>
 
-              <!-- Betting Tale of the Tape HTML Table -->
+              <!-- Rule 1 Betting Tale of the Tape Table -->
               <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3">
                 <table class="w-full text-left text-xs font-mono tabular-nums">
                   <tbody class="divide-y divide-slate-800/80">
                     <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Projected Winner</th>
-                      <td class="py-1.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.projectedWinner }}</td>
-                    </tr>
-                    <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Win Probability %</th>
-                      <td class="py-1.5 text-right font-bold text-white">{{ pred.taleOfTheTape.winProbability }}</td>
+                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
+                      <td class="py-1.5 text-right font-bold text-slate-100">{{ pred.taleOfTheTape.tipOffTimePht }}</td>
                     </tr>
                     <tr>
                       <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Spread</th>
                       <td class="py-1.5 text-right font-bold text-amber-400">{{ pred.taleOfTheTape.spread }}</td>
                     </tr>
                     <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Over/Under</th>
+                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Over/Under Total</th>
                       <td class="py-1.5 text-right font-bold text-cyan-300">{{ pred.taleOfTheTape.overUnder }}</td>
+                    </tr>
+                    <tr>
+                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
+                      <td class="py-1.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.winProbability }}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              <!-- 2-Paragraph Matchup Analysis -->
+              <!-- 2-Paragraph Pre-Game Analysis -->
               <div class="space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">
                 <p v-for="(para, idx) in pred.paragraphs" :key="idx">{{ para }}</p>
               </div>
             </div>
           </div>
 
-          <!-- Bet Now / Play Now CTA Box -->
+          <!-- Rule 1: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
           <div class="px-4 sm:px-5 pb-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
             <a
               :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
@@ -2612,34 +2735,38 @@ watch(
               >
                 Bet Now
               </a>
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
+              >
+                Play Now
+              </a>
             </div>
           </div>
         </article>
       </div>
     </div>
 
-    <!-- DEDICATED TAB 2: NEWS & HIGHLIGHTS TAB VIEW -->
+    <!-- DEDICATED TAB 2: NEWS & HIGHLIGHTS TAB VIEW (STRICTLY NBA & PBA FINAL RECAPS ONLY) -->
     <div v-else-if="selectedLeague === 'highlights'" class="p-4 sm:p-6 space-y-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
         <div>
           <h2 class="text-base sm:text-lg font-black text-white">
-            Auto-Generated Post-Game Highlight Reports &amp; Box Score Recaps
+            NBA &amp; PBA Post-Game Highlight &amp; Short Recap Blogs (Last 48 Hours)
           </h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            Complete text-only post-game recaps, Top Player Highlights, and Quarter-by-Quarter (Q1–Q4 + Final) box score tables.
+            Text-only post-game short recaps, Top Player Highlights, and Quarter-by-Quarter (Q1–Q4 + FINAL) box score tables for completed NBA &amp; PBA games.
           </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5">
           <button
             v-for="sub in [
-              { id: 'all', label: 'All Today' },
-              { id: 'finished', label: 'Final Recaps' },
-              { id: 'live', label: 'Live Blogs' },
-              { id: 'nba', label: 'NBA' },
-              { id: 'pba', label: 'PBA' },
-              { id: 'mpbl', label: 'MPBL' },
-              { id: 'collegiate', label: 'UAAP & NCAA' }
+              { id: 'all', label: 'All Final Recaps' },
+              { id: 'nba', label: 'NBA Final Recaps' },
+              { id: 'pba', label: 'PBA Final Recaps' }
             ]"
             :key="sub.id"
             type="button"
@@ -2658,70 +2785,76 @@ watch(
         <article
           v-for="rep in highlightReports"
           :key="rep.slug"
-          class="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden flex flex-col justify-between transition-all"
+          class="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden flex flex-col justify-between transition-all group"
         >
           <div>
-            <!-- Tier 3 Dynamic "VS Matchup" Graphic Card (Responsive on mobile, 16:9 on desktop) -->
-            <div class="relative min-h-[190px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+            <!-- Rule 3 Thumbnail with Clean Corner Overlays (Away Logo, Home Logo, TipOff Ph Watermark, League Tag) -->
+            <div class="relative min-h-[195px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
               <img
                 :src="rep.bannerUrl"
-                :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Live Today Highlights`"
-                width="640"
-                height="360"
+                :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Game Highlights & Short Recap`"
+                width="800"
+                height="450"
                 loading="lazy"
                 decoding="async"
                 referrerpolicy="no-referrer"
                 @error="handleBannerImageError($event, rep.awayTeam, rep.homeTeam, rep.league)"
-                class="absolute inset-0 w-full h-full object-cover opacity-50"
+                class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
               />
-              <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30"></div>
+              <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
               <div class="relative z-10 p-3 sm:p-3.5 flex flex-col justify-between gap-2 flex-1">
-                <div class="flex items-center justify-between text-[11px] font-bold">
-                  <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase">{{ rep.league }}</span>
-                  <span class="text-slate-200 truncate ml-2">{{ rep.manilaTime }}</span>
+                <!-- Top Corners: Badge (Top-Left) + TipOff Ph Watermark (Top-Right) -->
+                <div class="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold">
+                  <span class="px-2 py-0.5 rounded bg-emerald-400 text-slate-950 font-black uppercase shadow truncate">{{ rep.badge }}</span>
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
+                    <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                    <span>TipOff Ph</span>
+                  </span>
                 </div>
-                <div class="grid grid-cols-3 items-center gap-2 my-auto py-1">
-                  <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                <!-- Bottom Corners: Away Logo (Bottom-Left), Final Score (Bottom-Center), Home Logo (Bottom-Right) -->
+                <div class="flex items-end justify-between gap-1.5 pt-6">
+                  <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%]">
                     <img
                       :src="rep.awayLogo"
                       :alt="`${rep.awayTeam} Official Logo`"
-                      width="44"
-                      height="44"
+                      width="36"
+                      height="36"
                       loading="lazy"
                       decoding="async"
                       referrerpolicy="no-referrer"
                       @error="handleImageErrorToCrest($event, rep.awayTeam)"
-                      class="w-10 h-10 sm:w-11 sm:h-11 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
                     />
-                    <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ rep.awayTeam }}</span>
+                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.awayTeam }}</span>
                   </div>
-                  <div class="text-center px-1 min-w-0">
-                    <div class="text-[10px] font-black text-amber-400 uppercase">FINAL</div>
-                    <div class="text-sm sm:text-base font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
+
+                  <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-emerald-400/35 shrink-0">
+                    <div class="text-[9px] font-black text-emerald-400 uppercase">FINAL</div>
+                    <div class="text-xs sm:text-sm font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
                   </div>
-                  <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                  <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%] text-right">
+                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.homeTeam }}</span>
                     <img
                       :src="rep.homeLogo"
                       :alt="`${rep.homeTeam} Official Logo`"
-                      width="44"
-                      height="44"
+                      width="36"
+                      height="36"
                       loading="lazy"
                       decoding="async"
                       referrerpolicy="no-referrer"
                       @error="handleImageErrorToCrest($event, rep.homeTeam)"
-                      class="w-10 h-10 sm:w-11 sm:h-11 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
                     />
-                    <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ rep.homeTeam }}</span>
                   </div>
-                </div>
-                <div class="text-[11px] text-center text-slate-300 font-medium truncate">
-                  {{ rep.venue }}
                 </div>
               </div>
             </div>
 
             <div class="p-4 sm:p-5 space-y-3.5">
-              <!-- SEO <h3> Headline: [Winner] Defeat [Loser] [Score]: Post-Game Highlights & Box Score Recap -->
+              <!-- Rule 2 Headline (<h3>): "[Winning Team] Defeat [Losing Team] [WinScore]–[LoseScore]: Game Highlights & Short Recap" -->
               <h3 class="text-base sm:text-lg font-black text-white leading-snug">
                 <a
                   :href="buildDualModeHref('report', rep.slug, '/local-sports')"
@@ -2732,28 +2865,29 @@ watch(
                 </a>
               </h3>
 
-              <!-- 2-3 Paragraph Game Summary -->
+              <!-- Rule 2 Short Punchy Recap (2 Paragraphs) -->
               <div class="space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">
-                <p>{{ rep.summaryLead }}</p>
                 <p v-for="(para, idx) in rep.paragraphs" :key="idx">{{ para }}</p>
               </div>
 
-              <!-- Bulleted Top Player Highlights -->
+              <!-- Rule 2 Bulleted Top Player Highlights -->
               <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 space-y-1.5">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-amber-400">Top Player Highlights</div>
+                <div class="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                  Top Player Highlights ({{ rep.league }})
+                </div>
                 <ul class="space-y-1 text-xs text-slate-300 list-disc list-inside">
                   <li v-for="(pt, idx) in rep.topPlayerHighlights" :key="idx">{{ pt }}</li>
                 </ul>
               </div>
 
-              <!-- Quarter-by-Quarter (Q1-Q4 + Final) HTML Box Score Table -->
+              <!-- Rule 2 Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
               <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3">
                 <table class="w-full text-left text-xs font-mono tabular-nums">
                   <thead>
                     <tr class="border-b border-slate-800 text-slate-400">
                       <th class="py-1.5 pr-3 font-sans font-bold text-slate-300">Team</th>
                       <th v-for="q in rep.quarters" :key="q.label" class="py-1.5 px-1.5 text-center">{{ q.label }}</th>
-                      <th class="py-1.5 pl-2 text-right font-bold text-amber-400">Final</th>
+                      <th class="py-1.5 pl-2 text-right font-bold text-amber-400">FINAL</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/70">
@@ -2773,14 +2907,14 @@ watch(
             </div>
           </div>
 
-          <!-- Bet Now / Play Now CTA Box -->
+          <!-- Rule 2: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
           <div class="px-4 sm:px-5 pb-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
             <a
               :href="buildDualModeHref('report', rep.slug, '/local-sports')"
               @click.prevent="openReportBySlug(rep.slug, true)"
               class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
             >
-              View Full Box Score Report &rarr;
+              View Full Recap &rarr;
             </a>
             <div class="flex items-center gap-1.5 shrink-0">
               <a
@@ -2790,6 +2924,14 @@ watch(
                 class="px-3 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
               >
                 Bet Now
+              </a>
+              <a
+                :href="PROMO_URL"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
+              >
+                Play Now
               </a>
             </div>
           </div>
@@ -2925,7 +3067,7 @@ watch(
             </div>
           </div>
 
-          <!-- Footer Action Row: Descriptive Stream Link, View Button, Bet Now & Play Now -->
+          <!-- Footer Action Row -->
           <div class="pt-2.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
             <div class="flex items-center gap-2 min-w-0 truncate">
               <a
@@ -2962,15 +3104,15 @@ watch(
         </div>
       </div>
 
-      <!-- DUAL PLACEMENT: ALWAYS-VISIBLE, CRAWLABLE SEO BLOG FEED DIRECTLY BELOW MAIN MATCH GRID -->
+      <!-- DUAL PLACEMENT: ALWAYS-VISIBLE, CRAWLABLE SEO BLOG FEED DIRECTLY BELOW MAIN MATCH GRID (STRICTLY NBA & PBA) -->
       <section v-if="predictionBlogs.length > 0 || highlightReports.length > 0" class="pt-6 border-t border-slate-800 space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 class="text-lg sm:text-xl font-black text-white tracking-tight">
-              Automated Match Predictions, Betting Odds &amp; Post-Game Box Score Reports
+              Automated NBA &amp; PBA Pre-Game Predictions &amp; Post-Game Final Recaps
             </h2>
             <p class="text-xs text-slate-400 mt-0.5">
-              Real-time pre-game Tale of the Tape predictions and full Q1–Q4 box score recaps for every match in the feed.
+              Strictly verified NBA and PBA pre-game Tale of the Tape predictions and post-game Q1–Q4 box score recaps.
             </p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -2986,78 +3128,84 @@ watch(
               @click.prevent="handleTabSelect('highlights', true)"
               class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors"
             >
-              All Box Score Recaps
+              All Final Recaps
             </a>
           </div>
         </div>
 
-        <!-- Auto-Generated Pre-Game Prediction Articles (Upcoming & Live) -->
+        <!-- Auto-Generated Pre-Game Prediction Articles (Strictly NBA & PBA Upcoming) -->
         <div v-if="predictionBlogs.length > 0" class="space-y-3">
           <div class="text-xs font-black uppercase tracking-wider text-amber-400">
-            Pre-Game &amp; Live Match Predictions (Tale of the Tape)
+            NBA &amp; PBA Pre-Game Prediction Blogs (Today + Next 7 Days PHT)
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <article
               v-for="pred in predictionBlogs.slice(0, 6)"
               :key="`feed-pred-${pred.slug}`"
-              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between"
+              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between group"
             >
               <div>
-                <!-- Tier 3 Dynamic "VS Matchup" Graphic Card -->
-                <div class="relative min-h-[185px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+                <!-- Rule 3 Thumbnail with Clean Corner Overlays -->
+                <div class="relative min-h-[190px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
                   <img
                     :src="pred.bannerUrl"
-                    :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks Today`"
-                    width="640"
-                    height="360"
+                    :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks`"
+                    width="800"
+                    height="450"
                     loading="lazy"
                     decoding="async"
                     referrerpolicy="no-referrer"
                     @error="handleBannerImageError($event, pred.awayTeam, pred.homeTeam, pred.league)"
-                    class="absolute inset-0 w-full h-full object-cover opacity-50"
+                    class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30"></div>
+                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
                   <div class="relative z-10 p-3 flex flex-col justify-between gap-2 flex-1">
-                    <div class="flex items-center justify-between text-[10px] font-bold">
-                      <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase">{{ pred.league }}</span>
-                      <span class="text-slate-200 truncate ml-2">{{ pred.manilaTime }}</span>
+                    <!-- Top Corners -->
+                    <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
+                      <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase shadow truncate">{{ pred.badge }}</span>
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
+                        <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                        <span>TipOff Ph</span>
+                      </span>
                     </div>
-                    <div class="grid grid-cols-3 items-center gap-2 my-auto py-1">
-                      <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                    <!-- Bottom Corners -->
+                    <div class="flex items-end justify-between gap-1.5 pt-6">
+                      <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%]">
                         <img
                           :src="pred.awayLogo"
                           :alt="`${pred.awayTeam} Official Logo`"
-                          width="40"
-                          height="40"
+                          width="32"
+                          height="32"
                           loading="lazy"
                           decoding="async"
                           referrerpolicy="no-referrer"
                           @error="handleImageErrorToCrest($event, pred.awayTeam)"
-                          class="w-10 h-10 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
                         />
-                        <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ pred.awayTeam }}</span>
+                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.awayTeam }}</span>
                       </div>
-                      <div class="text-center px-1 min-w-0">
-                        <div class="text-[10px] font-black text-amber-400 uppercase">VS</div>
-                        <div class="text-xs font-mono font-black text-white whitespace-nowrap">{{ pred.taleOfTheTape.projectedScore }}</div>
+
+                      <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-amber-400/35 shrink-0">
+                        <div class="text-[9px] font-black text-amber-400 uppercase">VS</div>
+                        <div class="text-[10px] font-mono font-bold text-slate-200 whitespace-nowrap">{{ pred.matchDatePHT }}</div>
                       </div>
-                      <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                      <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%] text-right">
+                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.homeTeam }}</span>
                         <img
                           :src="pred.homeLogo"
                           :alt="`${pred.homeTeam} Official Logo`"
-                          width="40"
-                          height="40"
+                          width="32"
+                          height="32"
                           loading="lazy"
                           decoding="async"
                           referrerpolicy="no-referrer"
                           @error="handleImageErrorToCrest($event, pred.homeTeam)"
-                          class="w-10 h-10 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
                         />
-                        <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ pred.homeTeam }}</span>
                       </div>
-                    </div>
-                    <div class="text-[10px] text-center text-cyan-300 font-mono font-bold truncate">
-                      {{ pred.taleOfTheTape.spread }} · {{ pred.taleOfTheTape.overUnder }}
                     </div>
                   </div>
                 </div>
@@ -3076,20 +3224,20 @@ watch(
                   <table class="w-full text-left text-xs font-mono tabular-nums bg-slate-950 border border-slate-800 rounded-lg">
                     <tbody class="divide-y divide-slate-800/80">
                       <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Projected Winner</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.projectedWinner }}</td>
-                      </tr>
-                      <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Win Probability %</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-white">{{ pred.taleOfTheTape.winProbability }}</td>
+                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
+                        <td class="py-1.5 px-2.5 text-right font-bold text-slate-100">{{ pred.taleOfTheTape.tipOffTimePht }}</td>
                       </tr>
                       <tr>
                         <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Spread</th>
                         <td class="py-1.5 px-2.5 text-right font-bold text-amber-400">{{ pred.taleOfTheTape.spread }}</td>
                       </tr>
                       <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Over/Under</th>
+                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Over/Under Total</th>
                         <td class="py-1.5 px-2.5 text-right font-bold text-cyan-300">{{ pred.taleOfTheTape.overUnder }}</td>
+                      </tr>
+                      <tr>
+                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
+                        <td class="py-1.5 px-2.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.winProbability }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -3100,7 +3248,7 @@ watch(
                 </div>
               </div>
 
-              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 bg-slate-950/60">
+              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
                 <a
                   :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
                   @click.prevent="openPredictionBySlug(pred.slug, true)"
@@ -3117,79 +3265,93 @@ watch(
                   >
                     Bet Now
                   </a>
+                  <a
+                    :href="PROMO_URL"
+                    target="_blank"
+                    rel="nofollow sponsored noopener"
+                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white"
+                  >
+                    Play Now
+                  </a>
                 </div>
               </div>
             </article>
           </div>
         </div>
 
-        <!-- Auto-Generated Post-Game Highlight Reports (Final Matches) -->
+        <!-- Auto-Generated Post-Game Highlight Reports (Strictly NBA & PBA Final Matches) -->
         <div v-if="highlightReports.length > 0" class="space-y-3 pt-4">
-          <div class="text-xs font-black uppercase tracking-wider text-cyan-400">
-            Post-Game Highlight Reports &amp; Quarter-by-Quarter Box Scores
+          <div class="text-xs font-black uppercase tracking-wider text-emerald-400">
+            NBA &amp; PBA Post-Game Highlight &amp; Short Recap Blogs (Last 48 Hours)
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <article
               v-for="rep in highlightReports.slice(0, 6)"
               :key="`feed-rep-${rep.slug}`"
-              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between"
+              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between group"
             >
               <div>
-                <!-- Tier 3 Dynamic "VS Matchup" Graphic Card -->
-                <div class="relative min-h-[185px] sm:aspect-video w-full bg-gradient-to-br from-[#0b1329] via-[#131d38] to-[#23122b] overflow-hidden border-b border-slate-800 flex flex-col justify-between">
+                <!-- Rule 3 Thumbnail with Clean Corner Overlays -->
+                <div class="relative min-h-[190px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
                   <img
                     :src="rep.bannerUrl"
-                    :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Live Today Highlights`"
-                    width="640"
-                    height="360"
+                    :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Game Highlights & Short Recap`"
+                    width="800"
+                    height="450"
                     loading="lazy"
                     decoding="async"
                     referrerpolicy="no-referrer"
                     @error="handleBannerImageError($event, rep.awayTeam, rep.homeTeam, rep.league)"
-                    class="absolute inset-0 w-full h-full object-cover opacity-50"
+                    class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30"></div>
+                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+
                   <div class="relative z-10 p-3 flex flex-col justify-between gap-2 flex-1">
-                    <div class="flex items-center justify-between text-[10px] font-bold">
-                      <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase">{{ rep.league }}</span>
-                      <span class="text-slate-200 truncate ml-2">{{ rep.manilaTime }}</span>
+                    <!-- Top Corners -->
+                    <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
+                      <span class="px-2 py-0.5 rounded bg-emerald-400 text-slate-950 font-black uppercase shadow truncate">{{ rep.badge }}</span>
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
+                        <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                        <span>TipOff Ph</span>
+                      </span>
                     </div>
-                    <div class="grid grid-cols-3 items-center gap-2 my-auto py-1">
-                      <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                    <!-- Bottom Corners -->
+                    <div class="flex items-end justify-between gap-1.5 pt-6">
+                      <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%]">
                         <img
                           :src="rep.awayLogo"
                           :alt="`${rep.awayTeam} Official Logo`"
-                          width="40"
-                          height="40"
+                          width="32"
+                          height="32"
                           loading="lazy"
                           decoding="async"
                           referrerpolicy="no-referrer"
                           @error="handleImageErrorToCrest($event, rep.awayTeam)"
-                          class="w-10 h-10 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
                         />
-                        <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ rep.awayTeam }}</span>
+                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.awayTeam }}</span>
                       </div>
-                      <div class="text-center px-1 min-w-0">
-                        <div class="text-[10px] font-black text-amber-400 uppercase">FINAL</div>
-                        <div class="text-sm font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
+
+                      <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-emerald-400/35 shrink-0">
+                        <div class="text-[9px] font-black text-emerald-400 uppercase">FINAL</div>
+                        <div class="text-xs font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
                       </div>
-                      <div class="flex flex-col items-center text-center gap-1 min-w-0">
+
+                      <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%] text-right">
+                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.homeTeam }}</span>
                         <img
                           :src="rep.homeLogo"
                           :alt="`${rep.homeTeam} Official Logo`"
-                          width="40"
-                          height="40"
+                          width="32"
+                          height="32"
                           loading="lazy"
                           decoding="async"
                           referrerpolicy="no-referrer"
                           @error="handleImageErrorToCrest($event, rep.homeTeam)"
-                          class="w-10 h-10 object-contain rounded-lg bg-white p-1 shadow shrink-0"
+                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
                         />
-                        <span class="text-xs font-bold text-white leading-tight line-clamp-2 break-words">{{ rep.homeTeam }}</span>
                       </div>
-                    </div>
-                    <div class="text-[10px] text-center text-slate-300 font-medium truncate">
-                      {{ rep.venue }}
                     </div>
                   </div>
                 </div>
@@ -3205,21 +3367,23 @@ watch(
                     </a>
                   </h3>
 
+                  <!-- 2-Paragraph Short Recap -->
                   <div class="space-y-1.5 text-xs text-slate-300 leading-relaxed">
-                    <p>{{ rep.summaryLead }}</p>
                     <p v-for="(para, idx) in rep.paragraphs" :key="idx">{{ para }}</p>
                   </div>
 
+                  <!-- Top Player Highlights Bullets -->
                   <ul class="space-y-1 text-xs text-slate-300 list-disc list-inside bg-slate-950/90 border border-slate-800 rounded-lg p-2.5">
                     <li v-for="(pt, idx) in rep.topPlayerHighlights" :key="idx">{{ pt }}</li>
                   </ul>
 
+                  <!-- Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
                   <table class="w-full text-left text-xs font-mono tabular-nums bg-slate-950 border border-slate-800 rounded-lg">
                     <thead>
                       <tr class="border-b border-slate-800 text-slate-400">
                         <th class="py-1 px-2 font-sans font-bold text-slate-300">Team</th>
                         <th v-for="q in rep.quarters" :key="q.label" class="py-1 px-1.5 text-center">{{ q.label }}</th>
-                        <th class="py-1 px-2 text-right font-bold text-amber-400">Final</th>
+                        <th class="py-1 px-2 text-right font-bold text-amber-400">FINAL</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/70">
@@ -3238,13 +3402,13 @@ watch(
                 </div>
               </div>
 
-              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 bg-slate-950/60">
+              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
                 <a
                   :href="buildDualModeHref('report', rep.slug, '/local-sports')"
                   @click.prevent="openReportBySlug(rep.slug, true)"
                   class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
                 >
-                  Open Box Score Report &rarr;
+                  Open Final Recap &rarr;
                 </a>
                 <div class="flex items-center gap-1.5">
                   <a
@@ -3254,6 +3418,14 @@ watch(
                     class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950"
                   >
                     Bet Now
+                  </a>
+                  <a
+                    :href="PROMO_URL"
+                    target="_blank"
+                    rel="nofollow sponsored noopener"
+                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white"
+                  >
+                    Play Now
                   </a>
                 </div>
               </div>
