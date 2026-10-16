@@ -278,31 +278,3 @@ function selectLeague(league: LeagueItem) {
   </nav>
 </template>
 
-<style scoped>
-/* Infinite continuous marquee from right to left */
-@keyframes marquee-scroll {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
-}
-
-.marquee-track {
-  display: flex;
-  width: max-content;
-  animation: marquee-scroll 38s linear infinite;
-}
-
-/* Pause marquee seamlessly on hover so users can easily click logos */
-.hover\:pause:hover {
-  animation-play-state: paused;
-}
-
-/* Soft gradient edge fade on the right and left boundary */
-.marquee-mask {
-  mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
-}
-</style>

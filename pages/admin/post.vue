@@ -576,7 +576,7 @@ The energy at the arena reaches fever pitch as the **${away}** square off agains
     authorId: authors.value[0]?.id || 'author-rafael-dizon',
     contentType: 'news',
     sourceName: 'TipOffPh Sports Intelligence',
-    sourceUrl: 'https://live88.eu.cc/api/v1/matches?site=Rh8MdMzXHpOZ_0JN4a7IeSIL&sport=pba',
+    sourceUrl: 'https://live88.eu.cc/api/v1/matches?site=-Qw82foL4XnLt_vBp8LVXjwW&sport=pba',
     featuredImageUrl: target?.home.logo || '/img/pba-logo.webp',
     imageAlt: `PBA ${away} vs ${home}`,
     imageCredit: 'TipOffPh / Sports Desk',

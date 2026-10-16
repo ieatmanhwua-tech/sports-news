@@ -1,12 +1,11 @@
 import { fetchLocalSportsData } from '../utils/local-sports';
-import { getTeamLogo, getTeamAccent, getTeamInitials } from '../../shared/team-logos';
+import { getTeamLogo, getTeamAccent, getTeamInitials, classifyMatchLeague } from '../../shared/team-logos';
 
-// Authentic basketball stream video sources (high-bitrate fastbreak & arena action)
 const STREAM_VIDEO_SOURCES = {
-  nba1: 'https://assets.mixkit.co/videos/preview/mixkit-basketball-player-slamming-the-ball-in-the-hoop-40286-large.mp4',
-  nba2: 'https://assets.mixkit.co/videos/preview/mixkit-basketball-players-passing-the-ball-in-a-game-40288-large.mp4',
-  pba1: 'https://assets.mixkit.co/videos/preview/mixkit-basketball-player-making-a-slam-dunk-40284-large.mp4',
-  pba2: 'https://assets.mixkit.co/videos/preview/mixkit-basketball-player-shooting-a-hoop-40282-large.mp4'
+  nba1: '/videos/basketball-live.webm',
+  nba2: '/videos/basketball-arena.webm',
+  pba1: '/videos/basketball-arena.webm',
+  pba2: '/videos/basketball-live.webm'
 };
 
 export default defineEventHandler(async (event) => {
@@ -17,134 +16,189 @@ export default defineEventHandler(async (event) => {
   const compParam = query.comp ? String(query.comp) : '';
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
+  setResponseHeaders(event, {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+
   let matchData: any = null;
+  let activeLiveStreamResults: any[] = [];
 
   try {
     const sportsData = await fetchLocalSportsData(refresh);
     const allMatches = sportsData.allMatches || [];
+    activeLiveStreamResults = (sportsData.livestreams || []).filter(
+      (m: any) => Array.isArray(m.sources) && m.sources.length > 0
+    );
 
-    // Find match by matchId
+    // 1. Find match by exact matchId
     if (matchId) {
-      matchData = allMatches.find(m => m.id === matchId);
+      matchData =
+        activeLiveStreamResults.find(m => m.id === matchId) ||
+        allMatches.find(m => m.id === matchId);
     }
 
-    // Fallback: Find by home/away team names
+    // 2. Fallback: Find by home/away team names
     if (!matchData && homeParam && awayParam) {
-      const hLower = homeParam.toLowerCase();
-      const aLower = awayParam.toLowerCase();
-      matchData = allMatches.find(m => 
-        (m.home?.name || '').toLowerCase().includes(hLower) &&
-        (m.away?.name || '').toLowerCase().includes(aLower)
-      );
+      const hLower = homeParam.toLowerCase().trim();
+      const aLower = awayParam.toLowerCase().trim();
+      matchData =
+        activeLiveStreamResults.find(m =>
+          (m.home?.name || '').toLowerCase().includes(hLower) &&
+          (m.away?.name || '').toLowerCase().includes(aLower)
+        ) ||
+        allMatches.find(m =>
+          (m.home?.name || '').toLowerCase().includes(hLower) &&
+          (m.away?.name || '').toLowerCase().includes(aLower)
+        );
     }
 
-    // Fallback: Pick top active live match
-    if (!matchData && allMatches.length > 0) {
-      matchData = allMatches.find(m => m.status === 'live') || allMatches[0];
+    // 3. Fallback: Pick top active Live88 stream match
+    if (!matchData) {
+      matchData =
+        activeLiveStreamResults[0] ||
+        allMatches.find(m => Array.isArray(m.sources) && m.sources.length > 0) ||
+        allMatches[0];
     }
   } catch (err: any) {
-    console.warn('[live-stream API] Warning fetching local sports data:', err?.message);
+    console.warn('[live-stream API] Warning fetching Live88 data:', err?.message);
   }
 
-  // Construct normalized match details
-  const homeName = matchData?.home?.name || homeParam || 'Los Angeles Lakers';
-  const awayName = matchData?.away?.name || awayParam || 'Golden State Warriors';
-  const homeLogo = matchData?.home?.logo || getTeamLogo(homeName);
-  const awayLogo = matchData?.away?.logo || getTeamLogo(awayName);
-  const competition = matchData?.competition || compParam || (homeName.includes('Lakers') ? 'NBA 2026 Regular Season' : "PBA Governors' Cup 2026");
-  const isNba = /nba/i.test(competition) || /lakers|warriors|celtics|pistons|knicks|76ers|nuggets|suns|bucks|heat|bulls|mavericks/i.test(homeName + awayName);
+  // Build normalized list of all active Live88 video streams from livestream?segment=live
+  const live88Streams = activeLiveStreamResults
+    .filter(r => Array.isArray(r.sources) && r.sources.some((s: any) => s?.url))
+    .map(r => {
+      const src = r.sources.find((s: any) => s?.url) || r.sources[0];
+      const hName = r.home?.name || 'Home';
+      const aName = r.away?.name || 'Away';
+      return {
+        id: r.id,
+        competition: r.competition || r.streamLabel || 'Live88 Broadcast',
+        homeName: hName,
+        awayName: aName,
+        homeShort: r.home?.shortName || hName.split(' ').pop() || hName,
+        awayShort: r.away?.shortName || aName.split(' ').pop() || aName,
+        homeLogo: getTeamLogo(hName, r.home?.logo),
+        awayLogo: getTeamLogo(aName, r.away?.logo),
+        homeScore: r.homeScore ?? 0,
+        awayScore: r.awayScore ?? 0,
+        clock: r.clock || 'LIVE',
+        streamUrl: src.url,
+        proxyUrl: `/api/live88/stream-proxy?url=${encodeURIComponent(src.url)}`,
+        streamType: src.type || (String(src.url).includes('.m3u8') ? 'hls' : 'flv'),
+        streamLabel: src.label || 'Live88 FLV'
+      };
+    });
 
-  const homeScore = matchData?.homeScore !== undefined ? matchData.homeScore : (isNba ? 108 : 94);
-  const awayScore = matchData?.awayScore !== undefined ? matchData.awayScore : (isNba ? 105 : 91);
-  const status = matchData?.status || 'live';
-  const clock = matchData?.clock || (isNba ? 'Q4 4:18' : 'Q4 2:45');
+  const homeName = matchData?.home?.name || homeParam || live88Streams[0]?.homeName || 'Terrafirma Dyip';
+  const awayName = matchData?.away?.name || awayParam || live88Streams[0]?.awayName || 'San Miguel Beermen';
+  const homeLogo = getTeamLogo(homeName, matchData?.home?.logo);
+  const awayLogo = getTeamLogo(awayName, matchData?.away?.logo);
 
-  // Multi-channel streams for this match
-  const channels = isNba
+  const classified = classifyMatchLeague({
+    homeTeam: homeName,
+    awayTeam: awayName,
+    competition: matchData?.competition || compParam,
+    sport: matchData?.sport,
+    leagueId: matchData?.leagueId
+  });
+  const isNba = classified.leagueId === 'nba';
+  const competition = matchData?.competition || compParam || classified.leagueFullName;
+
+  const homeScore = matchData?.homeScore !== undefined ? matchData.homeScore : (live88Streams[0]?.homeScore ?? 0);
+  const awayScore = matchData?.awayScore !== undefined ? matchData.awayScore : (live88Streams[0]?.awayScore ?? 0);
+  const status = 'live';
+  const clock = matchData?.clock || live88Streams[0]?.clock || 'LIVE';
+
+  // Extract genuine upstream Live88 stream sources (FLV / HLS)
+  const rawMatchSources = (matchData?.sources || []).filter(
+    (s: any) => s && s.url && (s.url.startsWith('http://') || s.url.startsWith('https://'))
+  );
+
+  // Pair with all active Live88 streams so player can automatically fail over across active feeds
+  const orderedFallbackStreams = !isNba
     ? [
-        {
-          id: 'feed1',
-          name: 'Feed 1: NBA HD League Pass Relay',
-          type: 'video_stream',
-          url: STREAM_VIDEO_SOURCES.nba1,
-          quality: '1080p 60fps',
-          badge: 'PRIMARY LIVE',
-          isLive: true
-        },
-        {
-          id: 'feed2',
-          name: 'Feed 2: Jumbotron Arena Cam',
-          type: 'video_stream',
-          url: STREAM_VIDEO_SOURCES.nba2,
-          quality: '1080p 60fps',
-          badge: 'ARENA CAM',
-          isLive: true
-        },
-        {
-          id: 'radar',
-          name: 'Feed 3: 2D Courtside Radar Telemetry',
-          type: 'radar',
-          quality: 'Interactive Live',
-          badge: 'RADAR',
-          isLive: true
-        },
-        {
-          id: 'youtube',
-          name: 'Feed 4: YouTube Official Broadcaster',
-          type: 'youtube',
-          youtubeId: 'f18Hsk4ZgI4',
-          quality: '720p HD',
-          badge: 'YOUTUBE RELAY',
-          isLive: true
-        }
+        ...live88Streams.filter(s => /pba|governors|mpbl|philippine|uaap|ncaa/i.test(s.competition)),
+        ...live88Streams.filter(s => !/pba|governors|mpbl|philippine|uaap|ncaa/i.test(s.competition))
       ]
     : [
-        {
-          id: 'feed1',
-          name: 'Feed 1: Courtside HD Live Relay',
-          type: 'video_stream',
-          url: STREAM_VIDEO_SOURCES.pba1,
-          quality: '1080p 60fps',
-          badge: 'PRIMARY LIVE',
-          isLive: true
-        },
-        {
-          id: 'feed2',
-          name: 'Feed 2: Jumbotron Arena Cam',
-          type: 'video_stream',
-          url: STREAM_VIDEO_SOURCES.pba2,
-          quality: '1080p 60fps',
-          badge: 'ARENA CAM',
-          isLive: true
-        },
-        {
-          id: 'radar',
-          name: 'Feed 3: 2D Courtside Radar Telemetry',
-          type: 'radar',
-          quality: 'Interactive Live',
-          badge: 'RADAR',
-          isLive: true
-        },
-        {
-          id: 'youtube',
-          name: 'Feed 4: Pilipinas Live / TV5 Relay',
-          type: 'youtube',
-          youtubeId: /ginebra|kings/i.test(homeName + awayName) ? '9iIXv9_3vWk' : 'l-K_j2l6fUQ',
-          quality: '720p HD',
-          badge: 'OFFICIAL RELAY',
-          isLive: true
-        }
+        ...live88Streams.filter(s => !/pba|mpbl/i.test(s.competition)),
+        ...live88Streams.filter(s => /pba|mpbl/i.test(s.competition))
       ];
+
+  const seenUrls = new Set<string>();
+  const upstreamSources: { id: string; label: string; type: string; url: string; proxyUrl: string }[] = [];
+
+  for (const s of rawMatchSources) {
+    if (!seenUrls.has(s.url)) {
+      seenUrls.add(s.url);
+      upstreamSources.push({
+        id: String(s.id || matchData?.id || 'live'),
+        label: String(s.label || 'Live88 Direct Stream'),
+        type: s.type || (String(s.url).includes('.m3u8') ? 'hls' : 'flv'),
+        url: String(s.url),
+        proxyUrl: `/api/live88/stream-proxy?url=${encodeURIComponent(String(s.url))}`
+      });
+    }
+  }
+
+  for (const fb of orderedFallbackStreams) {
+    if (fb.streamUrl && !seenUrls.has(fb.streamUrl)) {
+      seenUrls.add(fb.streamUrl);
+      upstreamSources.push({
+        id: fb.id,
+        label: `${fb.homeShort} vs ${fb.awayShort} (${fb.streamLabel})`,
+        type: fb.streamType,
+        url: fb.streamUrl,
+        proxyUrl: fb.proxyUrl
+      });
+    }
+  }
+
+  const primaryUpstreamSource = upstreamSources[0] || null;
+
+  const channels = [
+    {
+      id: 'feed1',
+      name: 'Live88 Direct Stream',
+      type: 'video_stream',
+      url: isNba ? STREAM_VIDEO_SOURCES.nba1 : STREAM_VIDEO_SOURCES.pba1,
+      flvUrl: primaryUpstreamSource?.type === 'flv' ? primaryUpstreamSource.url : undefined,
+      hlsUrl: primaryUpstreamSource?.type === 'hls' ? primaryUpstreamSource.url : undefined,
+      proxyUrl: primaryUpstreamSource?.proxyUrl,
+      quality: 'Live88 FLV',
+      badge: 'LIVE88 LIVE',
+      isLive: true
+    },
+    {
+      id: 'feed2',
+      name: 'Courtside HD Backup',
+      type: 'video_stream',
+      url: isNba ? STREAM_VIDEO_SOURCES.nba2 : STREAM_VIDEO_SOURCES.pba2,
+      quality: '1080p 60fps',
+      badge: 'HD BACKUP',
+      isLive: true
+    },
+    {
+      id: 'radar',
+      name: '2D Court Tracker',
+      type: 'radar',
+      quality: 'Interactive Live',
+      badge: '2D COURT',
+      isLive: true
+    }
+  ];
 
   return {
     success: true,
-    matchId: matchData?.id || matchId || 'live-match',
+    matchId: matchData?.id || matchId || 'live88-live',
     competition,
     isNba,
     status,
     clock,
     shotClock: 24,
-    venue: matchData?.venue || (isNba ? `${homeName} Arena, USA` : 'Smart Araneta Coliseum, Quezon City'),
+    venue: matchData?.venue || classified.defaultVenue,
     home: {
       id: matchData?.home?.id || 'home',
       name: homeName,
@@ -163,14 +217,10 @@ export default defineEventHandler(async (event) => {
       logo: awayLogo,
       score: awayScore
     },
+    upstreamSources,
+    live88Streams,
     channels,
     defaultChannelId: 'feed1',
-    antiBan: {
-      protected: true,
-      referrerPolicy: 'no-referrer',
-      sandboxed: true,
-      proxyRelay: true
-    },
     spectators: 18420,
     timestamp: new Date().toISOString()
   };

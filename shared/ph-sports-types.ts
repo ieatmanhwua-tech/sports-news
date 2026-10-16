@@ -50,11 +50,19 @@ export interface PhSportsMatch {
   odds?: PhSportsOdds;
   probability?: PhSportsProbability;
   hasStream?: boolean;
+  hasVideoStream?: boolean;
   sources?: PhSportsStreamSource[];
   isFavorite?: boolean;
   scoreAvailable?: boolean;
   signals?: PhSportsSignal[];
   manilaTimeFormatted?: string;
+  startTimeIso?: string;
+  bannerUrl?: string;
+  espnSpread?: string;
+  espnOverUnder?: string;
+  topPlayerName?: string;
+  topPlayerStat?: string;
+  topPlayerHeadshot?: string;
 }
 
 export interface PhSportsSignal {

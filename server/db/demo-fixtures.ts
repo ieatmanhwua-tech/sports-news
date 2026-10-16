@@ -1,5 +1,6 @@
 import type { Article, Author, GameScore } from '../../shared/types';
 import { CATEGORIES_REGISTRY } from '../../shared/categories';
+import { NBA_PRESEASON_PREDICTIONS_TOMORROW, NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE } from '../../shared/nba-predictions';
 
 export const DEMO_AUTHORS: Author[] = [
   {
@@ -69,8 +70,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": true,
     "status": "published",
-    "publishedAt": "2026-10-13T07:15:00Z",
-    "createdAt": "2026-10-13T07:00:00Z"
+    "publishedAt": "2026-10-15T07:35:00Z",
+    "createdAt": "2026-10-15T07:00:00Z"
   },
   {
     "id": "art-pba-002",
@@ -92,11 +93,11 @@ export const DEMO_ARTICLES: Article[] = [
     "imageCredit": "TipOffPh / Sports Action Media",
     "seoTitle": "San Miguel Beermen Top Magnolia 106-98: June Mar Fajardo & CJ Perez Deliver | TipOffPh",
     "seoDescription": "June Mar Fajardo tallies 28 points and 16 rebounds as San Miguel Beermen defeat Magnolia Hotshots 106-98 in a physical PBA showcase at Smart Araneta Coliseum.",
-    "isFeatured": false,
+    "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-13T06:30:00Z",
-    "createdAt": "2026-10-13T06:00:00Z"
+    "publishedAt": "2026-10-15T07:20:00Z",
+    "createdAt": "2026-10-15T06:50:00Z"
   },
   {
     "id": "art-nba-001",
@@ -121,8 +122,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-13T05:45:00Z",
-    "createdAt": "2026-10-13T05:00:00Z"
+    "publishedAt": "2026-10-15T07:10:00Z",
+    "createdAt": "2026-10-15T06:40:00Z"
   },
   {
     "id": "art-nba-002",
@@ -144,11 +145,11 @@ export const DEMO_ARTICLES: Article[] = [
     "imageCredit": "TipOffPh / Sports Action Media",
     "seoTitle": "Warriors Beat Lakers 111-97: Stephen Curry & Bronny James Highlights | TipOffPh",
     "seoDescription": "Stephen Curry tallies 16 points and 6 assists as the Golden State Warriors defeat the Los Angeles Lakers 111-97. Complete tactical breakdown and rookie notes on TipOffPh.",
-    "isFeatured": false,
+    "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-13T04:20:00Z",
-    "createdAt": "2026-10-13T04:00:00Z"
+    "publishedAt": "2026-10-15T07:00:00Z",
+    "createdAt": "2026-10-15T06:30:00Z"
   },
   {
     "id": "art-other-001",
@@ -174,8 +175,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-13T03:30:00Z",
-    "createdAt": "2026-10-13T03:00:00Z"
+    "publishedAt": "2026-10-15T06:50:00Z",
+    "createdAt": "2026-10-15T06:20:00Z"
   },
   {
     "id": "art-other-002",
@@ -197,11 +198,11 @@ export const DEMO_ARTICLES: Article[] = [
     "imageCredit": "TipOffPh / Sports Action Media",
     "seoTitle": "MPBL 2026 Playoffs: Abra Weavers 26-Game Streak & Caloocan Sweep | TipOffPh",
     "seoDescription": "Abra Weavers crush Muntinlupa 126-70 while Caloocan Batang Kankaloo sweeps into the MPBL Division Semifinals. In-depth scores and bracket report on TipOffPh.",
-    "isFeatured": false,
+    "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-13T02:15:00Z",
-    "createdAt": "2026-10-13T02:00:00Z"
+    "publishedAt": "2026-10-15T06:42:00Z",
+    "createdAt": "2026-10-15T06:10:00Z"
   },
   {
     id: 'art-001',
@@ -533,6 +534,199 @@ Stay tuned for more updates as the Best-of-3 Quarterfinals continue.`,
     status: 'published',
     publishedAt: '2026-10-10T06:30:00Z',
     createdAt: '2026-10-10T06:00:00Z'
+  },
+  ...[...NBA_PRESEASON_PREDICTIONS_TOMORROW, ...NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE].map((pred, idx): Article => ({
+    id: `art-nba-pred-${pred.id}`,
+    slug: pred.articleSlug,
+    title: pred.blogTitle,
+    excerpt: `${pred.shortBlogLead} Expert Pick: ${pred.expertPick} (Projected Score: ${pred.awayTeam.abbr} ${pred.predictedScore.away} - ${pred.homeTeam.abbr} ${pred.predictedScore.home}).`,
+    body: [
+      `MANILA / NBA DESK — ${pred.shortBlogLead}`,
+      `### Matchup & Broadcast Details`,
+      `- **Matchup:** ${pred.awayTeam.name} (${pred.awayTeam.preseasonRecord}) at ${pred.homeTeam.name} (${pred.homeTeam.preseasonRecord})`,
+      `- **Tip-Off Time:** ${pred.tipOffPht} (${pred.tipOffUs})`,
+      `- **Arena:** ${pred.venue}`,
+      `- **Spread / Total:** ${pred.spreadLine} | ${pred.overUnderLine} | Moneyline: ${pred.moneyline}`,
+      `### Preseason Fight Breakdown & Tactical Analysis`,
+      ...pred.shortBlogParagraphs,
+      `### Star Matchup Spotlight`,
+      `- **${pred.awayTeam.name} Key Performer:** ${pred.awayTeam.starPlayer.name} (${pred.awayTeam.starPlayer.position}) — ${pred.awayTeam.starPlayer.preseasonAvg}`,
+      `- **${pred.homeTeam.name} Key Performer:** ${pred.homeTeam.starPlayer.name} (${pred.homeTeam.starPlayer.position}) — ${pred.homeTeam.starPlayer.preseasonAvg}`,
+      `### Key Betting & Rotation Trends`,
+      ...pred.tacticalKeys.map(k => `- ${k}`),
+      `### Final Prediction & Score Projection`,
+      `**Projected Final Score:** ${pred.predictedWinnerName} win, **${pred.awayTeam.abbr} ${pred.predictedScore.away} – ${pred.homeTeam.abbr} ${pred.predictedScore.home}**\n\n**Official TipOffPh Pick:** **${pred.expertPick}** (${pred.confidencePct}% Model Confidence)`
+    ].join('\n\n'),
+    primaryCategoryId: 'nba-news',
+    topicIds: ['nba-news', 'nba', 'game-previews-and-predictions'],
+    authorId: 'author-rafael-dizon',
+    contentType: 'analysis',
+    sourceName: 'TipOffPh NBA Analytics & Preseason Desk',
+    sourceUrl: 'https://nba.com',
+    featuredImageUrl: pred.featuredImageUrl,
+    imageAlt: `${pred.awayTeam.name} vs ${pred.homeTeam.name} NBA Preseason Prediction Featured Image`,
+    imageCredit: `Official NBA Preseason Action (${pred.awayTeam.abbr} & ${pred.homeTeam.abbr}) / TipOffPh`,
+    seoTitle: `${pred.blogTitle} | TipOffPh NBA Predictions`,
+    seoDescription: `${pred.shortBlogLead} Read our full NBA preseason prediction, odds breakdown (${pred.spreadLine}, ${pred.overUnderLine}), and projected score.`,
+    isFeatured: idx < 5,
+    isBreaking: idx === 0,
+    status: 'published',
+    publishedAt: new Date(Date.UTC(2026, 9, 15, 5, 55 - idx * 3, 0)).toISOString(),
+    createdAt: new Date(Date.UTC(2026, 9, 15, 5, 0, 0)).toISOString()
+  })),
+  {
+    id: 'art-pba-003',
+    slug: 'pba-governors-cup-barangay-ginebra-vs-nlex-road-warriors-araneta-showdown',
+    title: "PBA Governors' Cup: Barangay Ginebra Outduels NLEX Road Warriors 104-99 in High-Octane Smart Araneta Showdown",
+    excerpt: 'Scottie Thompson and Justin Brownlee orchestrate a relentless fourth-quarter perimeter blitz as the Gin Kings hold off Robert Bolick and the NLEX Road Warriors under the bright lights of the Big Dome.',
+    body: `QUEZON CITY — Under the bright lights of the Smart Araneta Coliseum, Barangay Ginebra San Miguel delivered a vintage "Never Say Die" fourth-quarter surge to turn back a spirited NLEX Road Warriors squad, 104-99, in a pivotal PBA Governors' Cup elimination clash.
+
+With both clubs jockeying for quarterfinal positioning, the contest evolved into a high-speed guard duel between Ginebra floor general Scottie Thompson and NLEX playmaker Robert Bolick. Thompson finished with a near triple-double of 19 points, 10 rebounds, and 8 assists, repeatedly slicing through NLEX's perimeter defense off high ball-screens.
+
+### Brownlee & Thompson Ignite the Fourth Quarter
+
+Trailing 82-79 entering the final ten minutes, head coach Tim Cone tightened Ginebra's half-court switching scheme, forcing NLEX into contested pull-up jumpers. Resident import Justin Brownlee took over offensively, pouring in 14 of his 32 points in the fourth period, including back-to-back transition three-pointers that sent the red-clad Araneta crowd into an uproar.
+
+"NLEX pushed our transition defense to the limit tonight," Cone noted post-game. "Robert Bolick is a tremendous pick-and-roll creator, and it took a full team effort from Scottie, Maverick Ahanmisi, and Stephen Holt to contain their guard penetration down the stretch."
+
+### Key Matchup Takeaways
+
+- **Backcourt Execution:** Ginebra dished out 29 team assists against just 9 turnovers, punishing NLEX's blitzing schemes.
+- **Paint Scoring:** Japeth Aguilar added 18 points and 3 blocks to seal the interior in the closing two minutes.`,
+    primaryCategoryId: 'pba-news',
+    topicIds: ['pba-news', 'pba-governors-cup', 'pba'],
+    authorId: 'author-joaquin-santos',
+    contentType: 'news',
+    sourceName: 'PBA Official Media Bureau',
+    sourceUrl: 'https://pba.ph',
+    featuredImageUrl: '/img/articles/pba-ginebra-vs-nlex-araneta.jpg',
+    imageAlt: 'Barangay Ginebra guard driving past NLEX Road Warriors defender at Smart Araneta Coliseum',
+    imageCredit: 'TipOffPh / PBA Courtside Lens',
+    seoTitle: 'Barangay Ginebra Beats NLEX 104-99 in PBA Araneta Showdown | TipOffPh',
+    seoDescription: 'Justin Brownlee and Scottie Thompson power Barangay Ginebra past the NLEX Road Warriors 104-99 at Smart Araneta Coliseum.',
+    isFeatured: true,
+    isBreaking: false,
+    status: 'published',
+    publishedAt: '2026-10-15T06:35:00Z',
+    createdAt: '2026-10-15T06:15:00Z'
+  },
+  {
+    id: 'art-uaap-003',
+    slug: 'uaap-season-87-up-fighting-maroons-battle-ue-red-warriors-round-2-clash',
+    title: 'UAAP Season 87: UP Fighting Maroons Weather UE Red Warriors Second-Half Storm in Physical 79-73 Victory',
+    excerpt: 'Quentin Millora-Brown and Francis Lopez dominate the offensive glass as the UP Fighting Maroons hold off Precious Momowei and the surging UE Red Warriors.',
+    body: `MANILA — In a physical battle of top-four contenders, the University of the Philippines (UP) Fighting Maroons leaned on their championship poise and frontline size to outlast the University of the East (UE) Red Warriors, 79-73, in UAAP Season 87 second-round action.
+
+With both teams sporting maroon and crimson colors in front of a packed collegiate crowd, the interior war between UP center Quentin Millora-Brown and UE student-athlete standout Precious Momowei headlined the afternoon. Millora-Brown hauled down 15 rebounds—including 7 on the offensive glass—to give UP crucial second-chance possessions in crunch time.
+
+### Second-Half Defensive Lockdown
+
+After UE trimmed a 13-point deficit down to two midway through the fourth quarter behind Wello Lingolingo's perimeter shooting, UP guard Gerry Abadiano and Harold Alarcon clamped down on the perimeter, forcing three consecutive shot-clock violations.
+
+"UE is one of the most disciplined defensive teams in the UAAP this season," UP head coach Goldwin Monteverde said. "Winning the rebounding battle in the final five minutes was the difference."`,
+    primaryCategoryId: 'uaap-basketball',
+    topicIds: ['uaap-basketball', 'uaap', 'collegiate-basketball', 'ncaa-basketball'],
+    authorId: 'author-maria-reyes',
+    contentType: 'news',
+    sourceName: 'UAAP Press Corps',
+    sourceUrl: 'https://uaap.org.ph',
+    featuredImageUrl: '/img/articles/uaap-up-vs-ue-red-warriors.jpg',
+    imageAlt: 'UP Fighting Maroons and UE Red Warriors battling for a rebound in UAAP collegiate basketball action',
+    imageCredit: 'TipOffPh / Collegiate Courtside',
+    seoTitle: 'UP Fighting Maroons Edge UE Red Warriors 79-73 in UAAP Clash | TipOffPh',
+    seoDescription: 'Quentin Millora-Brown and Francis Lopez power the UP Fighting Maroons past the UE Red Warriors 79-73 in UAAP Season 87 action.',
+    isFeatured: true,
+    isBreaking: false,
+    status: 'published',
+    publishedAt: '2026-10-15T06:28:00Z',
+    createdAt: '2026-10-15T06:05:00Z'
+  },
+  {
+    id: 'art-uaap-004',
+    slug: 'uaap-season-87-feu-tamaraws-veezy-bautista-pao-jaurigue-final-four-push',
+    title: 'UAAP Season 87: FEU Tamaraws Surge Into Final Four Contention Behind Explosive Backcourt Drive at MOA Arena',
+    excerpt: 'Jorick Bautista and Veejay Pre spearhead a relentless transition attack in green and gold as the FEU Tamaraws stun the blue-clad defense in front of a roaring student crowd.',
+    body: `PASAY CITY — The Far Eastern University (FEU) Tamaraws kept their UAAP Season 87 Final Four hopes burning bright on Wednesday afternoon, unleashing a blistering fourth-quarter run at the Mall of Asia Arena to secure a statement victory in second-round elimination play.
+
+Wearing their signature gold and green uniforms, the Tamaraws attacked the paint relentlessly. Dynamic guard Jorick Bautista poured in 23 points on 9-of-16 shooting, repeatedly beating perimeter defenders off the dribble to collapse the interior defense and open up kick-out triples.
+
+### Youth Movement Under Sean Chambers
+
+Head coach Sean Chambers praised his young Morayta squad's resilience after bouncing back from a slow first-round start: "Our guards are playing fearless basketball right now. When Veejay Pre and Mo Konateh control the defensive rebounds and let our guards run in transition, we can compete with anyone in the league."`,
+    primaryCategoryId: 'uaap-basketball',
+    topicIds: ['uaap-basketball', 'uaap', 'collegiate-basketball', 'ncaa-basketball'],
+    authorId: 'author-maria-reyes',
+    contentType: 'news',
+    sourceName: 'UAAP Press Corps',
+    sourceUrl: 'https://uaap.org.ph',
+    featuredImageUrl: '/img/articles/uaap-feu-tamaraws-moa-arena.jpg',
+    imageAlt: 'FEU Tamaraws guard in gold and green jersey driving past blue defender in packed UAAP arena',
+    imageCredit: 'TipOffPh / Collegiate Courtside',
+    seoTitle: 'FEU Tamaraws Surge in UAAP Season 87 Final Four Race | TipOffPh',
+    seoDescription: 'Jorick Bautista and Veejay Pre power the FEU Tamaraws to a statement second-round UAAP victory at the Mall of Asia Arena.',
+    isFeatured: false,
+    isBreaking: false,
+    status: 'published',
+    publishedAt: '2026-10-15T06:20:00Z',
+    createdAt: '2026-10-15T06:00:00Z'
+  },
+  {
+    id: 'art-mpbl-004',
+    slug: 'mpbl-playoffs-batangas-city-tanduay-vs-san-juan-knights-regional-clash',
+    title: 'MPBL Playoffs: Batangas City Tanduay Rum Masters Clash With San Juan Knights in Packed Regional Arena Thriller',
+    excerpt: 'Levi Hernandez and Cedric Ablaza ignite the green-and-gold faithful in transition as Batangas City trades haymakers with Orlan Wamar and the San Juan Knights.',
+    body: `BATANGAS CITY — Playoff intensity reached a boiling point at the Batangas City Sports Coliseum as the Batangas City Tanduay Rum Masters and the San Juan Knights collided in a classic Maharlika Pilipinas Basketball League (MPBL) postseason showdown.
+
+Backed by a sea of green-and-gold hometown supporters, Batangas City pushed the tempo off every defensive stop, with veteran wing Cedric Ablaza and sharpshooter Levi Hernandez combining for 39 points. San Juan countered with crisp half-court ball movement led by Orlan Wamar and Michael Calisaan, turning the fourth quarter into a possession-by-possession chess match.
+
+### Regional Basketball at Its Finest
+
+"Games like tonight show why regional playoff basketball means so much to our local communities," Batangas head coach Cholo Villanueva said. "Every loose ball and transition layup is contested with everything both teams have."`,
+    primaryCategoryId: 'mpbl-news',
+    topicIds: ['mpbl-news', 'mpbl'],
+    authorId: 'author-carlo-mendoza',
+    contentType: 'news',
+    sourceName: 'MPBL Official Press Office',
+    sourceUrl: 'https://mpbl.ph',
+    featuredImageUrl: '/img/articles/mpbl-batangas-vs-san-juan.jpg',
+    imageAlt: 'MPBL playoff fastbreak action between Batangas City in green and gold and San Juan in white jerseys',
+    imageCredit: 'TipOffPh / Regional Hoops Desk',
+    seoTitle: 'Batangas City vs San Juan Knights MPBL Playoff Thriller | TipOffPh',
+    seoDescription: 'Batangas City Tanduay Rum Masters and San Juan Knights battle in a high-intensity MPBL playoff clash in front of a packed regional crowd.',
+    isFeatured: false,
+    isBreaking: false,
+    status: 'published',
+    publishedAt: '2026-10-15T06:12:00Z',
+    createdAt: '2026-10-15T05:55:00Z'
+  },
+  {
+    id: 'art-easl-001',
+    slug: 'easl-2026-ryukyu-golden-kings-meralco-bolts-group-stage-showdown',
+    title: 'EASL 2026 Group Stage: Ryukyu Golden Kings and Meralco Bolts Trade Blows in Electric Asian Champions Clash',
+    excerpt: 'Japan B.League powerhouse Ryukyu Golden Kings test PBA contenders Meralco Bolts with relentless full-court perimeter pressure in East Asia Super League action.',
+    body: `MANILA — Regional club basketball took center stage in the East Asia Super League (EASL) 2025-26 Group Stage as Japan B.League powerhouse Ryukyu Golden Kings squared off against Philippine representatives Meralco Bolts in a fast-paced continental showcase.
+
+Sporting their iconic black-and-gold trim against white-and-blue road kits, the Golden Kings leaned on disciplined ball-screen continuity and physical perimeter defense to test Meralco guard Chris Newsome and reinforcement DJ Kennedy across all four quarters.
+
+### Elevating Asian Club Competition
+
+With FIBA Asia Champions Cup berths and international prestige on the line, both clubs traded transition runs and deep three-pointers, underscoring the rapid narrowing of the talent gap across the PBA, Japan B.League, and KBL.`,
+    primaryCategoryId: 'gilas-pilipinas',
+    topicIds: ['gilas-pilipinas', 'pba-news', 'overseas-filipino-players'],
+    authorId: 'author-rafael-dizon',
+    contentType: 'news',
+    sourceName: 'EASL Official Media Desk',
+    sourceUrl: 'https://easl.basketball',
+    featuredImageUrl: '/img/articles/easl-ryukyu-golden-kings-clash.jpg',
+    imageAlt: 'East Asia Super League perimeter defense between Ryukyu Golden Kings in black-gold and white-blue jerseys',
+    imageCredit: 'TipOffPh / EASL Coverage Desk',
+    seoTitle: 'EASL 2026: Ryukyu Golden Kings vs Meralco Bolts Clash | TipOffPh',
+    seoDescription: 'Ryukyu Golden Kings and Meralco Bolts battle in a high-intensity East Asia Super League group stage showdown.',
+    isFeatured: false,
+    isBreaking: false,
+    status: 'published',
+    publishedAt: '2026-10-15T06:05:00Z',
+    createdAt: '2026-10-15T05:50:00Z'
   }
 ];
 

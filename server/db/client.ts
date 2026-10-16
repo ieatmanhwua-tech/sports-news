@@ -66,7 +66,16 @@ class InMemoryStore {
         const raw = fs.readFileSync(STORE_FILE, 'utf-8');
         const data = JSON.parse(raw);
         if (Array.isArray(data.articles) && data.articles.length > 0) {
-          this.articles = data.articles;
+          const existingById = new Map<string, Article>(data.articles.map((a: Article) => [a.id, a]));
+          let addedOrUpdated = false;
+          for (const demoArt of DEMO_ARTICLES) {
+            existingById.set(demoArt.id, { ...demoArt });
+            addedOrUpdated = true;
+          }
+          this.articles = Array.from(existingById.values());
+          if (addedOrUpdated) {
+            this.saveToDisk();
+          }
         }
         if (Array.isArray(data.authors) && data.authors.length > 0) {
           this.authors = data.authors;

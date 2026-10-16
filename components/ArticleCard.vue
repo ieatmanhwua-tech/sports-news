@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Article } from '~/shared/types';
 import { useFormatters } from '~/composables/useFormatters';
+import { getSvgBlogArticleCover } from '~/shared/image-resolver';
 
 const props = withDefaults(defineProps<{
   article: Article;
@@ -12,6 +13,19 @@ const props = withDefaults(defineProps<{
 });
 
 const { formatRelativeTime } = useFormatters();
+
+function onArticleImgError(e: Event) {
+  const img = e.target as HTMLImageElement | null;
+  if (!img) return;
+  const parts = String(props.article.title || '').split(/\s+vs\.?\s+|\s+Defeat\s+|\s+Outduels\s+|\s+Edge\s+/i);
+  const away = (parts[0] || props.article.category?.name || 'TipOff PH').replace(/^LIVE BLOG:\s*/i, '').slice(0, 22).trim();
+  const home = (parts[1] || 'Official Coverage').split(/[:(—]/)[0]?.slice(0, 22).trim() || 'Basketball';
+  img.src = getSvgBlogArticleCover({
+    awayTeam: away,
+    homeTeam: home,
+    league: props.article.category?.name || 'BASKETBALL'
+  });
+}
 
 // Map content types to subtle editorial kicker text
 const contentTypeLabel = computed(() => {
@@ -48,7 +62,7 @@ const contentTypeLabel = computed(() => {
         :alt="article.imageAlt || article.title"
         loading="lazy"
         referrerpolicy="no-referrer"
-        @error="(e) => ((e.target as HTMLImageElement).src = '/img/articles/pba-governors-cup-2026.webp')"
+        @error="onArticleImgError"
         class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
       />
     </NuxtLink>

@@ -30,12 +30,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   title: 'NBA Live Odds & Matchups',
-  subtitle: 'Live betting lines, consensus spreads, totals, and head-to-head odds powered by NBA Sports API',
+  subtitle: 'Live betting lines, consensus spreads, totals, and head-to-head odds',
   limit: 12,
   showSearch: true,
   compact: false,
   selectedBookmakerKey: 'draftkings',
-  allowCopySnippet: true
+  allowCopySnippet: false
 });
 
 const emit = defineEmits<{
@@ -177,9 +177,6 @@ async function copySnippet(game: FormattedNbaOddsGame) {
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
               Live Feed
             </span>
-            <span class="text-xs text-amber-400 font-bold uppercase tracking-wider drop-shadow-sm">
-              NBA Sports API Worker
-            </span>
             <span v-if="data?.rateLimitProtected" class="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
               <ShieldCheck class="w-3 h-3 text-amber-400" />
               Rate-Guard Active
@@ -209,10 +206,10 @@ async function copySnippet(game: FormattedNbaOddsGame) {
         </div>
       </div>
 
-      <!-- Filters & Bookmaker Switcher Row -->
-      <div class="mt-5 pt-4 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+      <!-- Filters Row -->
+      <div v-if="showSearch" class="mt-5 pt-4 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
         <!-- Search Team -->
-        <div v-if="showSearch" class="relative max-w-xs w-full">
+        <div class="relative max-w-xs w-full">
           <Search class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input 
             v-model="searchQuery" 
@@ -220,23 +217,6 @@ async function copySnippet(game: FormattedNbaOddsGame) {
             placeholder="Filter teams (Lakers, Celtics, Warriors...)" 
             class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
           />
-        </div>
-
-        <!-- Bookmaker Pills -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-slate-400 text-[11px] font-bold mr-1 uppercase tracking-wider">Bookmaker:</span>
-          <button
-            v-for="b in availableBookmakers.slice(0, 5)"
-            :key="b.key"
-            type="button"
-            @click="activeBookie = b.key"
-            class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all border"
-            :class="activeBookie === b.key 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 border-orange-400 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
-              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700/80 hover:border-cyan-400/50'"
-          >
-            {{ b.title }}
-          </button>
         </div>
       </div>
     </div>
@@ -246,7 +226,7 @@ async function copySnippet(game: FormattedNbaOddsGame) {
       <!-- Loading State -->
       <div v-if="pending && (!allGames || allGames.length === 0)" class="py-12 text-center text-slate-400">
         <RefreshCw class="w-8 h-8 text-amber-400 animate-spin mx-auto mb-3" />
-        <p class="text-sm font-bold text-white">Connecting to NBA Sports API Worker...</p>
+        <p class="text-sm font-bold text-white">Loading live NBA odds...</p>
         <p class="text-xs text-slate-400 mt-1">Retrieving latest odds, spreads, and upcoming matchups</p>
       </div>
 
@@ -292,24 +272,6 @@ async function copySnippet(game: FormattedNbaOddsGame) {
                 <Clock class="w-3.5 h-3.5 text-slate-500" />
                 <span>{{ formatManilaTime(game.commence_time) }}</span>
               </span>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <!-- Quick Copy Story Snippet Button -->
-              <button
-                v-if="allowCopySnippet"
-                type="button"
-                @click="copySnippet(game)"
-                class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all shadow-xs"
-                :class="copiedGameId === game.id 
-                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-                  : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border-slate-700/70 hover:text-white'"
-                :title="'Copy structured odds snippet for article writing'"
-              >
-                <Check v-if="copiedGameId === game.id" class="w-3 h-3 text-emerald-400" />
-                <Copy v-else class="w-3 h-3 text-slate-400" />
-                <span>{{ copiedGameId === game.id ? 'Copied to Clipboard!' : 'Copy Odds for Article' }}</span>
-              </button>
             </div>
           </div>
 
@@ -371,7 +333,7 @@ async function copySnippet(game: FormattedNbaOddsGame) {
                   </div>
                 </div>
                 <div class="mt-2 text-[9px] text-amber-400/80 text-right truncate">
-                  via {{ getBookmaker(game, activeBookie)?.title || 'Consensus' }}
+                  Consensus Line
                 </div>
               </div>
 
@@ -396,7 +358,7 @@ async function copySnippet(game: FormattedNbaOddsGame) {
                   </div>
                 </div>
                 <div class="mt-2 text-[9px] text-cyan-400/80 text-right truncate">
-                  via {{ getBookmaker(game, activeBookie)?.title || 'Consensus' }}
+                  Consensus Line
                 </div>
               </div>
 
@@ -442,21 +404,9 @@ async function copySnippet(game: FormattedNbaOddsGame) {
         </button>
       </div>
 
-      <!-- Footer Source Attribution -->
-      <div class="mt-4 pt-3 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-400 gap-2 border-t border-slate-800">
+      <!-- Footer Info -->
+      <div class="mt-4 pt-3 flex items-center justify-end text-[11px] text-slate-500 border-t border-slate-800">
         <div>
-          <span>Direct Data Feed: </span>
-          <a 
-            href="https://nba-sports-api.ieatmanhwua.workers.dev/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            class="text-orange-400 font-mono hover:underline inline-flex items-center gap-0.5"
-          >
-            nba-sports-api.ieatmanhwua.workers.dev
-            <ExternalLink class="w-3 h-3 inline" />
-          </a>
-        </div>
-        <div class="text-slate-500">
           Times converted to Manila Time (PHT). Real-time odds updated on request.
         </div>
       </div>

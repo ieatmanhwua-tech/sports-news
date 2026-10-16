@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Instant Redirect for https://tipoff.bybetcasino.ph/c6Yv/ -> https://bybet.com/p/c6Yv
+  RewriteRule ^c6Yv/?$ https://bybet.com/p/c6Yv [L,R=302,NC]
+
+  # 2. Force HTTPS
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # 3. Serve existing files directly
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+
+  # 4. Route all other clean SEO URLs (/nba-live-today/, /report/...) to index.html
+  RewriteRule . /index.html [L]
+</IfModule>

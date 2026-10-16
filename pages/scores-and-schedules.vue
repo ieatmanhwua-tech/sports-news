@@ -159,6 +159,10 @@ const selectedLeague = ref<string>('all');
 const statusFilter = ref<'all' | 'live' | 'upcoming' | 'final'>('all');
 const { formatManilaTime } = useFormatters();
 
+const forceRefreshFlag = ref(false);
+const isPolling = ref(false);
+let scoresPollTimer: ReturnType<typeof setInterval> | null = null;
+
 const { data, refresh, pending } = await useAsyncData('scores-board', async () => {
   return await $fetch<{
     source: string;
@@ -167,11 +171,38 @@ const { data, refresh, pending } = await useAsyncData('scores-board', async () =
     games: GameScore[];
   }>('/api/scores', {
     query: {
-      league: selectedLeague.value
+      league: selectedLeague.value,
+      refresh: forceRefreshFlag.value ? 'true' : undefined,
+      _t: Date.now()
     }
   });
 }, {
   watch: [selectedLeague]
+});
+
+async function refreshRealtimeScores() {
+  if (isPolling.value) return;
+  isPolling.value = true;
+  forceRefreshFlag.value = true;
+  try {
+    await refresh();
+  } finally {
+    forceRefreshFlag.value = false;
+    isPolling.value = false;
+  }
+}
+
+onMounted(() => {
+  scoresPollTimer = setInterval(() => {
+    refreshRealtimeScores();
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (scoresPollTimer) {
+    clearInterval(scoresPollTimer);
+    scoresPollTimer = null;
+  }
 });
 
 const currentLeagueInfo = computed(() => {
@@ -279,8 +310,8 @@ function placeSimulatedBet() {
 }
 
 const config = useRuntimeConfig();
-const siteUrl = computed(() => (config.public.siteUrl || 'https://tipoffph.com').replace(/\/$/, ''));
-const canonicalUrl = computed(() => `${siteUrl.value}/scores-and-schedules`);
+const siteUrl = computed(() => (config.public.siteUrl || 'https://tipoff.bybetcasino.ph').replace(/\/$/, ''));
+const canonicalUrl = computed(() => `${siteUrl.value}/scores-and-schedules`.toLowerCase());
 
 // Schema.org Structured Data: SportsEvent Array + BreadcrumbList
 const sportsEventJsonLd = computed(() => {
@@ -354,7 +385,7 @@ useHead({
     { property: 'og:type', content: 'website' },
     { property: 'og:url', content: canonicalUrl.value },
     { property: 'og:image', content: `${siteUrl.value}/img/TipOffPh_logo.png` },
-    { property: 'og:site_name', content: 'TipOffPh' },
+    { property: 'og:site_name', content: 'TipOff Bybet PH' },
     { name: 'twitter:card', content: 'summary_large_image' },
     { name: 'twitter:title', content: 'Philippine & Global Basketball Scores & Schedules | TipOffPh' },
     { name: 'twitter:description', content: 'Official verified game schedules, live scores, venue locations, and television broadcasts on TipOffPh.' },
@@ -389,13 +420,13 @@ useHead({
         </div>
         <button 
           type="button" 
-          @click="() => refresh()" 
-          :disabled="pending"
-          class="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-300 hover:text-cyan-200 transition-colors"
-          title="Refresh feeds"
+          @click="refreshRealtimeScores" 
+          :disabled="pending || isPolling"
+          class="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-300 hover:text-cyan-200 transition-colors cursor-pointer"
+          title="Refresh real-time API feeds"
         >
-          <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': pending }" />
-          <span class="hidden sm:inline">{{ pending ? 'Updating...' : 'Live Sync' }}</span>
+          <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': pending || isPolling }" />
+          <span class="hidden sm:inline">{{ pending || isPolling ? 'Updating...' : 'Live Sync' }}</span>
         </button>
       </div>
 
@@ -549,11 +580,11 @@ useHead({
       />
     </div>
 
-    <!-- Live Philippine Sports Hub Section when PBA, MPBL or Collegiate is selected -->
-    <div v-if="['pba', 'mpbl', 'uaap', 'ncaa'].includes(selectedLeague)" class="mb-6">
+    <!-- Live88 Minimalist Video Player & Real-Time Scoreboard Hub -->
+    <div class="mb-6">
       <LocalSportsHub 
-        :initial-league="selectedLeague === 'pba' ? 'pba' : (selectedLeague === 'mpbl' ? 'mpbl' : 'collegiate')"
-        :max-items="12"
+        :initial-league="selectedLeague === 'pba' ? 'pba' : (selectedLeague === 'mpbl' ? 'mpbl' : (['uaap', 'ncaa'].includes(selectedLeague) ? 'collegiate' : (selectedLeague === 'nba' ? 'nba' : 'all')))"
+        :max-items="24"
       />
     </div>
 
@@ -678,7 +709,14 @@ useHead({
                   class="w-4 h-4 text-emerald-400 inline shrink-0" 
                 />
               </div>
+              <span
+                v-if="game.status === 'live' && (game.homeScore ?? 0) === 0 && (game.awayScore ?? 0) === 0"
+                class="text-[11px] font-bold uppercase tracking-wider text-red-400 shrink-0"
+              >
+                LIVE NOW
+              </span>
               <span 
+                v-else
                 class="font-mono font-black text-xl shrink-0"
                 :class="game.homeScore !== undefined && game.awayScore !== undefined && game.homeScore > game.awayScore ? 'text-orange-400 drop-shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'text-slate-200'"
               >
@@ -702,7 +740,14 @@ useHead({
                   class="w-4 h-4 text-emerald-400 inline shrink-0" 
                 />
               </div>
+              <span
+                v-if="game.status === 'live' && (game.homeScore ?? 0) === 0 && (game.awayScore ?? 0) === 0"
+                class="text-[11px] font-bold uppercase tracking-wider text-red-400 shrink-0"
+              >
+                IN PLAY
+              </span>
               <span 
+                v-else
                 class="font-mono font-black text-xl shrink-0"
                 :class="game.homeScore !== undefined && game.awayScore !== undefined && game.awayScore > game.homeScore ? 'text-orange-400 drop-shadow-[0_0_10px_rgba(249,115,22,0.6)]' : 'text-slate-200'"
               >
@@ -725,31 +770,41 @@ useHead({
             </div>
           </div>
 
-          <!-- Action Buttons: View Live and Bet Now -->
-          <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-800/50">
-            <button
-              type="button"
-              @click="openGameViewer(game)"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs"
+          <!-- Action Buttons: Watch [Away] vs [Home] Live, View & Bet Now ↗ -->
+          <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/50">
+            <a
+              :href="`/watch/${game.awayTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-vs-${game.homeTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-live/`"
+              @click.prevent="openGameViewer(game, 'stream')"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs min-w-0 truncate"
               :class="game.status === 'live' 
                 ? 'bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)]' 
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-cyan-400/60'"
-              :title="game.status === 'live' ? 'Watch live courtside feed' : 'View match details'"
             >
-              <Tv class="w-3.5 h-3.5" :class="game.status === 'live' ? 'animate-pulse text-amber-300' : 'text-cyan-400'" />
-              <span>{{ game.status === 'live' ? 'View Live' : (game.status === 'final' ? 'View Recap' : 'View Match') }}</span>
-              <span v-if="game.status === 'live'" class="w-1.5 h-1.5 rounded-full bg-white animate-ping ml-0.5"></span>
-            </button>
+              <Tv class="w-3.5 h-3.5 shrink-0" :class="game.status === 'live' ? 'animate-pulse text-amber-300' : 'text-cyan-400'" />
+              <span class="truncate">Watch {{ game.awayTeam }} vs {{ game.homeTeam }} Live</span>
+            </a>
 
-            <button
-              type="button"
-              @click="openGameBet(game)"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-300 text-slate-950 transition-all shadow-[0_0_18px_rgba(249,115,22,0.45)] ring-1 ring-orange-400/50"
-              title="View point spread, odds & bet now"
-            >
-              <Flame class="w-3.5 h-3.5 text-red-900" />
-              <span>Bet Now</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                @click.stop="openGameViewer(game, 'stats')"
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-all shadow-xs whitespace-nowrap cursor-pointer"
+                title="View Match Scoreboard & Details"
+              >
+                <span>View</span>
+              </button>
+
+              <a
+                href="https://tipoff.bybetcasino.ph/c6Yv/"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                @click.stop
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 transition-all shadow-[0_0_18px_rgba(249,115,22,0.45)] ring-1 ring-orange-400/50 shrink-0 whitespace-nowrap"
+                title="Bet on Live Games — Play at Bybet"
+              >
+                <span>Bet Now ↗</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -771,96 +826,94 @@ useHead({
       </button>
     </div>
 
-    <!-- Live Match Viewer Modal -->
-    <div
-      v-if="activeViewerGame"
-      class="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-hidden"
-      @click.self="closeGameViewer"
-    >
-      <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-3xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.9)] text-white">
-        <!-- Header -->
-        <div class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
-          <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-lg bg-red-600/30 border border-red-500/40 flex items-center justify-center text-red-400">
-              <Tv class="w-4 h-4" />
+    <!-- Teleported Modals to Body so Video Display is 100% Centered in Viewer's Screen Viewport -->
+    <Teleport to="body">
+      <!-- Live Match Viewer Modal (Centered in Middle of Viewer's Screen) -->
+      <div
+        v-if="activeViewerGame"
+        class="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-hidden"
+        @click.self="closeGameViewer"
+      >
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.95)] text-white mx-auto my-auto">
+          <!-- Header -->
+          <div class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-red-600/30 border border-red-500/40 flex items-center justify-center text-red-400">
+                <Tv class="w-4 h-4" />
+              </div>
+              <div>
+                <h4 class="font-extrabold text-sm text-white flex items-center gap-2">
+                  <span>Courtside Live Center</span>
+                  <span 
+                    class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
+                    :class="activeViewerGame.status === 'live' ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-800 text-slate-300'"
+                  >
+                    {{ activeViewerGame.statusDetail }}
+                  </span>
+                </h4>
+                <p class="text-[11px] text-slate-400">
+                  {{ activeViewerGame.eventName || activeViewerGame.league }}
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 class="font-extrabold text-sm text-white flex items-center gap-2">
-                <span>Courtside Live Center</span>
-                <span 
-                  class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
-                  :class="activeViewerGame.status === 'live' ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-800 text-slate-300'"
-                >
-                  {{ activeViewerGame.statusDetail }}
-                </span>
-                <span class="hidden sm:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-semibold">
-                  <ShieldCheck class="w-3 h-3 text-emerald-400" />
-                  Anti-Ban Shield
-                </span>
-              </h4>
-              <p class="text-[11px] text-slate-400">
-                {{ activeViewerGame.eventName || activeViewerGame.league }}
-              </p>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                v-if="activeViewerGame.status === 'live'"
+                type="button"
+                @click="() => popOutGame(activeViewerGame)"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer"
+                title="Minimize into floating window at corner of your screen"
+              >
+                <PictureInPicture class="w-3.5 h-3.5 text-amber-400" />
+                <span class="hidden sm:inline">Mini Corner Player</span>
+                <span class="sm:hidden">Mini</span>
+              </button>
+              <button
+                type="button"
+                @click="closeGameViewer"
+                class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Close modal"
+              >
+                <X class="w-5 h-5" />
+              </button>
             </div>
           </div>
-          <div class="flex items-center gap-1.5 shrink-0">
+
+          <!-- Modal View Tabs: Scoreboard vs Live Stream -->
+          <div class="flex items-center border-b border-slate-800 bg-slate-950/90 text-xs font-bold">
             <button
-              v-if="activeViewerGame.status === 'live'"
               type="button"
-              @click="() => popOutGame(activeViewerGame)"
-              class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all"
-              title="Pop out into floating window at corner of your screen"
+              @click="viewerTab = 'stats'"
+              :class="viewerTab === 'stats' ? 'text-amber-400 border-b-2 border-amber-400 bg-slate-900' : 'text-slate-400 hover:text-white'"
+              class="flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <PictureInPicture class="w-3.5 h-3.5 text-amber-400" />
-              <span class="hidden sm:inline">Pop Out to Corner</span>
-              <span class="sm:hidden">Pop Out</span>
+              <Trophy class="w-3.5 h-3.5" />
+              <span>Scoreboard &amp; Details</span>
             </button>
             <button
               type="button"
-              @click="closeGameViewer"
-              class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-              title="Close modal"
+              @click="viewerTab = 'stream'"
+              :class="viewerTab === 'stream' ? 'text-red-400 border-b-2 border-red-500 bg-slate-900' : 'text-slate-400 hover:text-white'"
+              class="flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <X class="w-5 h-5" />
+              <Tv class="w-3.5 h-3.5 text-red-500 animate-pulse" />
+              <span>Live Video Broadcast</span>
             </button>
           </div>
-        </div>
 
-        <!-- Modal View Tabs: Scoreboard vs Live iFrame Stream -->
-        <div class="flex items-center border-b border-slate-800 bg-slate-950/90 text-xs font-bold">
-          <button
-            type="button"
-            @click="viewerTab = 'stats'"
-            :class="viewerTab === 'stats' ? 'text-amber-400 border-b-2 border-amber-400 bg-slate-900' : 'text-slate-400 hover:text-white'"
-            class="flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Trophy class="w-3.5 h-3.5" />
-            <span>Scoreboard &amp; Details</span>
-          </button>
-          <button
-            type="button"
-            @click="viewerTab = 'stream'"
-            :class="viewerTab === 'stream' ? 'text-red-400 border-b-2 border-red-500 bg-slate-900' : 'text-slate-400 hover:text-white'"
-            class="flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Tv class="w-3.5 h-3.5 text-red-500 animate-pulse" />
-            <span>Live Broadcast (Anti-Ban iFrame)</span>
-          </button>
-        </div>
-
-        <!-- Tab 1: Live Sandboxed iFrame Video Player with Team Logos -->
-        <div v-if="viewerTab === 'stream'" class="aspect-video w-full bg-black relative overflow-hidden">
-          <iframe
-            :src="`/embed/live?matchId=${activeViewerGame.id}&home=${encodeURIComponent(activeViewerGame.homeTeam)}&away=${encodeURIComponent(activeViewerGame.awayTeam)}&homeLogo=${encodeURIComponent(activeViewerGame.homeTeamLogo || getTeamLogo(activeViewerGame.homeTeam))}&awayLogo=${encodeURIComponent(activeViewerGame.awayTeamLogo || getTeamLogo(activeViewerGame.awayTeam))}&comp=${encodeURIComponent(activeViewerGame.league || activeViewerGame.eventName || '')}&status=${activeViewerGame.status}&homeScore=${activeViewerGame.homeScore || 0}&awayScore=${activeViewerGame.awayScore || 0}`"
-            class="w-full h-full border-0"
-            title="TipOffPh Live Basketball Transmission"
-            referrerpolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-            allowfullscreen
-            loading="lazy"
-          ></iframe>
-        </div>
+          <!-- Tab 1: Live Video Player with Team Logos -->
+          <div v-if="viewerTab === 'stream'" class="aspect-video w-full bg-black relative overflow-hidden">
+            <iframe
+              :src="`/embed/live?matchId=${activeViewerGame.id}&home=${encodeURIComponent(activeViewerGame.homeTeam)}&away=${encodeURIComponent(activeViewerGame.awayTeam)}&homeLogo=${encodeURIComponent(activeViewerGame.homeTeamLogo || getTeamLogo(activeViewerGame.homeTeam))}&awayLogo=${encodeURIComponent(activeViewerGame.awayTeamLogo || getTeamLogo(activeViewerGame.awayTeam))}&comp=${encodeURIComponent(activeViewerGame.league || activeViewerGame.eventName || '')}&status=${activeViewerGame.status}&homeScore=${activeViewerGame.homeScore || 0}&awayScore=${activeViewerGame.awayScore || 0}`"
+              class="w-full h-full border-0"
+              title="TipOffPh Live Basketball Transmission"
+              referrerpolicy="no-referrer"
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowfullscreen
+              loading="eager"
+            ></iframe>
+          </div>
 
         <!-- Tab 2: Scoreboard Display -->
         <div v-else>
@@ -1251,6 +1304,7 @@ useHead({
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 

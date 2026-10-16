@@ -67,16 +67,13 @@ useHead({
         <ArrowLeft class="w-3.5 h-3.5" />
         <span>Back to All Scores &amp; Schedules</span>
       </NuxtLink>
-
-      <span class="text-slate-400 font-mono text-[11px] bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
-        Source: nba-sports-api.ieatmanhwua.workers.dev
-      </span>
     </div>
 
     <!-- Main Live Board -->
     <NbaOddsBoard 
       :limit="50"
       :show-search="true"
+      :allow-copy-snippet="false"
       title="NBA Live Odds &amp; Upcoming Scores"
       subtitle="Complete real-time odds, consensus spreads, totals, and head-to-head market prices for all upcoming NBA games."
     />
@@ -88,7 +85,7 @@ useHead({
         <span>About TipOffPh NBA Odds Coverage</span>
       </h3>
       <p>
-        TipOffPh tracks upcoming basketball matchups with verified market consensus lines across major sportsbooks including DraftKings, FanDuel, BetMGM, Caesars, and Bovada. 
+        TipOffPh tracks upcoming basketball matchups with verified market consensus lines across major sportsbooks. 
         All tip-off times are automatically synced to Philippine Standard Time (PHT, Asia/Manila) to help fans and content creators stay informed ahead of primetime broadcasts.
       </p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">

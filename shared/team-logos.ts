@@ -31,7 +31,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'Barangay Ginebra San Miguel',
-    aliases: ['barangay ginebra', 'ginebra', 'kings', 'bgsm'],
+    aliases: ['barangay ginebra', 'ginebra', 'gin kings', 'brgy ginebra', 'bgsm'],
     logo: 'https://img.kadario.com/basketball/team/4bee6b92661d43a6d7658dd5ed3fb1ff.png',
     accent: '#DC2626',
     secondaryAccent: '#FFFFFF',
@@ -71,7 +71,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'Rain or Shine Elasto Painters',
-    aliases: ['rain or shine', 'elasto painters', 'ros'],
+    aliases: ['rain or shine', 'elasto painters', 'elastopainters', 'rain or shine elastopainters', 'ros'],
     logo: 'https://img.kadario.com/basketball/team/fb4cef7d3a0ecc5fffcba83520732a94.png',
     accent: '#0284C7',
     secondaryAccent: '#EAB308',
@@ -101,7 +101,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'Phoenix Fuel Masters',
-    aliases: ['phoenix', 'fuel masters', 'phoenix super lpg'],
+    aliases: ['phoenix fuel masters', 'phoenix fuelmasters', 'fuel masters', 'fuelmasters', 'phoenix super lpg', 'phoenix pba'],
     logo: 'https://img.thesports.com/basketball/team/95c0060c118a7cdbf4ae5af32e2df905.png',
     accent: '#E11D48',
     secondaryAccent: '#F97316',
@@ -139,13 +139,33 @@ export const TEAM_REGISTRY: TeamProfile[] = [
     initials: 'CNV',
     league: 'PBA'
   },
+  {
+    name: 'Titan Ultra Giant Risers',
+    aliases: ['titan ultra', 'giant risers', 'titan ultra giant risers'],
+    logo: 'https://img.thesports.com/basketball/team/bf00306322e85ee7c3b72c7e1a8a82e0.png',
+    accent: '#0284C7',
+    secondaryAccent: '#1E293B',
+    shortName: 'Giant Risers',
+    initials: 'TGR',
+    league: 'PBA'
+  },
+  {
+    name: 'Macau Black Knights',
+    aliases: ['macau black knights', 'black knights', 'macau'],
+    logo: 'https://img.thesports.com/basketball/team/47f1194ed9989759c7ed13c7659cd5ee.png',
+    accent: '#1E293B',
+    secondaryAccent: '#F59E0B',
+    shortName: 'Black Knights',
+    initials: 'MBK',
+    league: 'PBA'
+  },
 
   // ==========================================
   // 2. MPBL (Maharlika Pilipinas Basketball League)
   // ==========================================
   {
     name: 'San Juan Knights',
-    aliases: ['san juan', 'knights'],
+    aliases: ['san juan', 'san juan knights'],
     logo: 'https://img.thesports.com/basketball/team/47f1194ed9989759c7ed13c7659cd5ee.png',
     accent: '#DC2626',
     shortName: 'Knights',
@@ -395,7 +415,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'UE Red Warriors',
-    aliases: ['ue', 'red warriors', 'warriors', 'ue warriors women'],
+    aliases: ['ue', 'red warriors', 'ue red warriors', 'ue warriors women'],
     logo: 'https://img.thesports.com/basketball/team/a1bcab9de3ecfe45190c95eb1cad333a.png',
     accent: '#DC2626',
     secondaryAccent: '#FFFFFF',
@@ -427,7 +447,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'CSB Benilde Blazers',
-    aliases: ['benilde', 'csb', 'blazers', 'csb benilde'],
+    aliases: ['benilde', 'csb', 'csb blazers', 'csb benilde', 'benilde blazers'],
     logo: 'https://img.thesports.com/basketball/team/45abbe80c9e34e6490ed844a6055bf78.png',
     accent: '#047857',
     shortName: 'Blazers',
@@ -436,7 +456,7 @@ export const TEAM_REGISTRY: TeamProfile[] = [
   },
   {
     name: 'Letran Knights',
-    aliases: ['letran', 'csjl', 'csjl knight', 'knights'],
+    aliases: ['letran', 'csjl', 'csjl knight', 'letran knights'],
     logo: 'https://img.thesports.com/basketball/team/d12bf57e7104c5e8c90c1dd6f71f39fb.png',
     accent: '#1E3A8A',
     shortName: 'Knights',
@@ -508,16 +528,16 @@ export const TEAM_REGISTRY: TeamProfile[] = [
     accent: '#EA580C',
     shortName: 'Taipan',
     initials: 'QC',
-    league: 'PSL'
+    league: 'MPBL'
   },
   {
     name: 'PFC Pelicans',
-    aliases: ['pfc', 'pelicans'],
+    aliases: ['pfc', 'pfc pelicans'],
     logo: 'https://img.thesports.com/basketball/team/17da94d1bafbd7481a9b0582dd6adb9d.png',
     accent: '#0284C7',
     shortName: 'Pelicans',
     initials: 'PFC',
-    league: 'PSL'
+    league: 'NCAA'
   },
   {
     name: 'Davao Occidental Tigers',
@@ -896,6 +916,9 @@ function adjustBrightness(hex: string, percent: number): string {
  */
 export function getTeamInitials(teamName: string): string {
   if (!teamName) return 'TP';
+  const profile = findTeamProfile(teamName);
+  if (profile?.initials) return profile.initials;
+
   const clean = teamName
     .replace(/\b(women|men|u19|u22|u21|basketball|team|club|philippines|pilipinas)\b/gi, '')
     .trim();
@@ -912,29 +935,348 @@ export function getTeamInitials(teamName: string): string {
   return (first.charAt(0) + second.charAt(0) + last.charAt(0)).toUpperCase();
 }
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function matchesWholePhrase(haystack: string, needle: string): boolean {
+  if (!needle) return false;
+  const regex = new RegExp(`(?:^|\\b)${escapeRegExp(needle)}(?:\\b|$)`, 'i');
+  return regex.test(haystack);
+}
+
 /**
- * Finds a matching team profile by name or alias.
+ * Finds a matching team profile by name or alias using strict word-boundary priority.
  */
 export function findTeamProfile(teamName: string): TeamProfile | undefined {
   if (!teamName) return undefined;
   const lower = teamName.toLowerCase().trim();
 
-  // 1. Direct name match
+  // 1. Direct exact name match
   const exact = TEAM_REGISTRY.find(t => t.name.toLowerCase() === lower);
   if (exact) return exact;
 
-  // 2. Alias match
-  const byAlias = TEAM_REGISTRY.find(t => 
-    t.aliases.some(a => lower === a || lower.includes(a) || a.includes(lower))
+  // 2. Direct exact alias match
+  const exactAlias = TEAM_REGISTRY.find(t =>
+    t.aliases.some(a => a.toLowerCase() === lower)
   );
-  if (byAlias) return byAlias;
+  if (exactAlias) return exactAlias;
 
-  // 3. Substring match
-  const bySubstring = TEAM_REGISTRY.find(t => {
-    const tLower = t.name.toLowerCase();
-    return lower.includes(tLower) || tLower.includes(lower);
-  });
-  return bySubstring;
+  // 3. Full registry name appears as whole phrase inside teamName
+  const byFullNamePhrase = TEAM_REGISTRY.find(t =>
+    matchesWholePhrase(lower, t.name.toLowerCase())
+  );
+  if (byFullNamePhrase) return byFullNamePhrase;
+
+  // 4. Whole-phrase alias match (prioritizing longer, more specific aliases first)
+  const ambiguousSingleWordMascots = new Set([
+    'kings', 'warriors', 'hawks', 'pelicans', 'blazers', 'knights', 'tigers', 'bulldogs', 'falcons', 'lions', 'cardinals', 'pirates', 'generals', 'bombers', 'stags', 'stars'
+  ]);
+
+  let bestProfile: TeamProfile | undefined;
+  let bestAliasLen = 0;
+
+  for (const profile of TEAM_REGISTRY) {
+    for (const alias of profile.aliases) {
+      const aLower = alias.toLowerCase().trim();
+      if (aLower.length < 3 && aLower !== lower) continue;
+      // Avoid matching generic 1-word mascots on unrelated foreign/regional teams
+      if (ambiguousSingleWordMascots.has(aLower) && aLower !== lower) continue;
+      if (matchesWholePhrase(lower, aLower) && aLower.length > bestAliasLen) {
+        bestProfile = profile;
+        bestAliasLen = aLower.length;
+      }
+    }
+  }
+
+  return bestProfile;
+}
+
+/**
+ * Strictly checks whether a team is one of the 30 official NBA franchises.
+ */
+export function isVerifiedNbaTeam(teamName: string): boolean {
+  const profile = findTeamProfile(teamName);
+  return profile?.league === 'NBA';
+}
+
+/**
+ * Checks whether a team is an official PBA franchise.
+ */
+export function isVerifiedPbaTeam(teamName: string): boolean {
+  const profile = findTeamProfile(teamName);
+  return profile?.league === 'PBA';
+}
+
+/**
+ * Returns the canonical official team name from TEAM_REGISTRY if matched (e.g. "Phoenix Fuelmasters" -> "Phoenix Fuel Masters").
+ */
+export function getCanonicalTeamName(teamName: string): string {
+  const trimmed = String(teamName || '').trim();
+  if (!trimmed) return 'Team';
+  const profile = findTeamProfile(trimmed);
+  if (profile && (profile.league === 'PBA' || profile.league === 'NBA')) {
+    return profile.name;
+  }
+  return trimmed;
+}
+
+export interface ClassifiedLeagueInfo {
+  leagueId: 'nba' | 'pba' | 'mpbl' | 'uaap' | 'ncaa' | 'gilas' | 'psl' | 'easl' | 'fiba' | 'd-league' | 'vismin' | 'nbl';
+  sport: 'nba' | 'pba' | 'mpbl' | 'collegiate' | 'gilas' | 'psl' | 'easl' | 'fiba';
+  league: string;
+  leagueFullName: string;
+  leagueLogo: string;
+  defaultVenue: string;
+  defaultBroadcast: string;
+}
+
+const LEAGUE_METADATA_MAP: Record<ClassifiedLeagueInfo['leagueId'], ClassifiedLeagueInfo> = {
+  nba: {
+    leagueId: 'nba',
+    sport: 'nba',
+    league: 'NBA',
+    leagueFullName: 'National Basketball Association',
+    leagueLogo: '/img/nba-logo.webp',
+    defaultVenue: 'NBA Arena, USA',
+    defaultBroadcast: 'NBA League Pass / NBA TV Philippines'
+  },
+  pba: {
+    leagueId: 'pba',
+    sport: 'pba',
+    league: 'PBA',
+    leagueFullName: "Philippine Basketball Association (Governors' Cup)",
+    leagueLogo: '/img/pba.png',
+    defaultVenue: 'Smart Araneta Coliseum / PhilSports Arena',
+    defaultBroadcast: 'One Sports / RPTV / Pilipinas Live'
+  },
+  mpbl: {
+    leagueId: 'mpbl',
+    sport: 'mpbl',
+    league: 'MPBL',
+    leagueFullName: 'Maharlika Pilipinas Basketball League',
+    leagueLogo: '/img/mpbl.png',
+    defaultVenue: 'Bren Z. Guiao Convention Center / Cuneta Astrodome',
+    defaultBroadcast: 'MPBL Official YouTube / Solar Sports'
+  },
+  uaap: {
+    leagueId: 'uaap',
+    sport: 'collegiate',
+    league: 'UAAP',
+    leagueFullName: 'University Athletic Association of the Philippines',
+    leagueLogo: '/img/uaap.webp',
+    defaultVenue: 'SM Mall of Asia Arena / Smart Araneta Coliseum',
+    defaultBroadcast: 'One Sports / UAAP Varsity Channel / Pilipinas Live'
+  },
+  ncaa: {
+    leagueId: 'ncaa',
+    sport: 'collegiate',
+    league: 'NCAA',
+    leagueFullName: 'National Collegiate Athletic Association (Philippines)',
+    leagueLogo: '/img/ncaa.png',
+    defaultVenue: 'Filoil EcoOil Centre, San Juan',
+    defaultBroadcast: 'GTV / GMA Sports / Heart of Asia'
+  },
+  gilas: {
+    leagueId: 'gilas',
+    sport: 'gilas',
+    league: 'Gilas Pilipinas',
+    leagueFullName: 'Gilas Pilipinas National Basketball Team',
+    leagueLogo: '/img/gilas-pilipinas.png',
+    defaultVenue: 'SM Mall of Asia Arena, Pasay City',
+    defaultBroadcast: 'One Sports / Pilipinas Live'
+  },
+  psl: {
+    leagueId: 'psl',
+    sport: 'psl',
+    league: 'PSL',
+    leagueFullName: 'Pilipinas Super League',
+    leagueLogo: '/img/PSL_Logo.png',
+    defaultVenue: 'Paco Arena / Alonte Sports Arena',
+    defaultBroadcast: 'Solar Sports / PSL Live'
+  },
+  easl: {
+    leagueId: 'easl',
+    sport: 'easl',
+    league: 'EASL',
+    leagueFullName: 'East Asia Super League',
+    leagueLogo: '/img/easl-logo.webp',
+    defaultVenue: 'Smart Araneta Coliseum / Mall of Asia Arena',
+    defaultBroadcast: 'One Sports / Pilipinas Live'
+  },
+  fiba: {
+    leagueId: 'fiba',
+    sport: 'fiba',
+    league: 'FIBA',
+    leagueFullName: 'FIBA Tournaments & Qualifiers',
+    leagueLogo: '/img/FIBA.webp',
+    defaultVenue: 'International FIBA Arena',
+    defaultBroadcast: 'One Sports / Courtside 1891'
+  },
+  'd-league': {
+    leagueId: 'd-league',
+    sport: 'pba',
+    league: 'PBA D-League',
+    leagueFullName: 'PBA Developmental League',
+    leagueLogo: '/img/PBA_D-League_logo.png',
+    defaultVenue: 'Ynares Sports Arena, Pasig City',
+    defaultBroadcast: 'PBA Rush / Pilipinas Live'
+  },
+  vismin: {
+    leagueId: 'vismin',
+    sport: 'mpbl',
+    league: 'VisMin Cup',
+    leagueFullName: 'Pilipinas VisMin Super Cup',
+    leagueLogo: '/img/vismin-cup.png',
+    defaultVenue: 'Cebu Coliseum',
+    defaultBroadcast: 'VisMin Sports Channel'
+  },
+  nbl: {
+    leagueId: 'nbl',
+    sport: 'mpbl',
+    league: 'NBL',
+    leagueFullName: 'National Basketball League Pilipinas',
+    leagueLogo: '/img/nbl.jpg',
+    defaultVenue: 'Hagonoy Sports Complex, Taguig',
+    defaultBroadcast: 'NBL TV Livestream'
+  }
+};
+
+/**
+ * Authoritatively classifies a match or team pair into its true league (NBA, PBA, MPBL, UAAP, NCAA, etc.)
+ * Strictly verifies NBA team franchise membership so non-NBA teams (e.g. Selangor vs Pahang in Malaysia Agong Cup)
+ * are NEVER mislabeled as NBA.
+ */
+export function classifyMatchLeague(input: {
+  homeTeam?: string;
+  awayTeam?: string;
+  competition?: string;
+  streamLabel?: string;
+  sport?: string;
+  leagueId?: string;
+  league?: string;
+}): ClassifiedLeagueInfo {
+  const homeName = (input.homeTeam || '').trim();
+  const awayName = (input.awayTeam || '').trim();
+  const metaText = `${input.competition || ''} ${input.streamLabel || ''} ${input.league || ''} ${input.leagueId || ''} ${input.sport || ''}`.toLowerCase();
+
+  const compOnly = `${input.competition || ''} ${input.streamLabel || ''}`.toLowerCase();
+  const isWomensLeague = /\bwnba\b|women's national basketball/i.test(compOnly);
+
+  const homeProfile = findTeamProfile(homeName);
+  const awayProfile = findTeamProfile(awayName);
+  const teamLeagues = [homeProfile?.league, awayProfile?.league].filter(Boolean);
+
+  // 1. Strict NBA Team Verification: BOTH teams (or at least one verified NBA team in an official NBA competition) must be official NBA franchises
+  if (
+    !isWomensLeague &&
+    ((homeProfile?.league === 'NBA' && awayProfile?.league === 'NBA') ||
+      (teamLeagues.includes('NBA') && (/^nba$|national basketball association/i.test((input.competition || '').trim()) || !input.competition)))
+  ) {
+    return LEAGUE_METADATA_MAP.nba;
+  }
+
+  // Check explicit Philippine & regional competition names from Live88 API
+  if (/\beasl\b|east asia super league/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.easl;
+  }
+  if (/d-league|developmental league|aspirants' cup/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP['d-league'];
+  }
+  if (/vismin/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.vismin;
+  }
+  if (/nbl pilipinas|national basketball league pilipinas/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.nbl;
+  }
+  if (/\buaap\b|\bwuaap\b|university athletic association/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.uaap;
+  }
+  if (/\bncaa\b|national collegiate athletic association/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.ncaa;
+  }
+  if (/\bmpbl\b|maharlika/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.mpbl;
+  }
+  if (/\bpba\b|governors' cup|philippine basketball governors|philippine cup|commissioner's cup/i.test(compOnly)) {
+    return LEAGUE_METADATA_MAP.pba;
+  }
+
+  // 2. If either team is a PBA team -> PBA
+  if (teamLeagues.includes('PBA')) {
+    return LEAGUE_METADATA_MAP.pba;
+  }
+
+  // 3. If either team is an MPBL team -> MPBL
+  if (teamLeagues.includes('MPBL')) {
+    return LEAGUE_METADATA_MAP.mpbl;
+  }
+
+  // 4. If either team is a UAAP team -> UAAP
+  if (teamLeagues.includes('UAAP')) {
+    return LEAGUE_METADATA_MAP.uaap;
+  }
+
+  // 5. If either team is an NCAA team -> NCAA
+  if (teamLeagues.includes('NCAA')) {
+    return LEAGUE_METADATA_MAP.ncaa;
+  }
+
+  // 6. If either team is Gilas -> Gilas or FIBA
+  if (teamLeagues.includes('Gilas')) {
+    if (/olympic qualifying|\bfiba\b/i.test(metaText) && !/gilas/i.test(input.league || '')) {
+      return LEAGUE_METADATA_MAP.fiba;
+    }
+    return LEAGUE_METADATA_MAP.gilas;
+  }
+
+  // 7. If either team is a PSL team -> PSL
+  if (teamLeagues.includes('PSL')) {
+    return LEAGUE_METADATA_MAP.psl;
+  }
+
+  // 8. If the API provided an explicit international/other competition name (e.g. "Malaysia Agong Cup", "Euroleague", "LKL", "WNBA"), preserve its true competition name instead of mislabeling as NBA
+  const rawCompClean = (input.competition || '').trim();
+  if (rawCompClean && !/^(nba|national basketball association|pba|mpbl|uaap|ncaa)$/i.test(rawCompClean)) {
+    const shortLeague = isWomensLeague
+      ? 'WNBA'
+      : rawCompClean.length > 24
+      ? rawCompClean.split(/\s+/).slice(0, 3).join(' ')
+      : rawCompClean;
+    return {
+      ...LEAGUE_METADATA_MAP.fiba,
+      league: shortLeague,
+      leagueFullName: rawCompClean,
+      defaultVenue: `${shortLeague} Arena`,
+      defaultBroadcast: input.streamLabel || `${shortLeague} Official Broadcast`
+    };
+  }
+
+  // Fallback to explicit Philippine league string
+  const compAndLeagueText = `${input.competition || ''} ${input.streamLabel || ''} ${input.league || ''}`.toLowerCase();
+  if (/\bpba\b|philippine basketball|governors' cup|commissioner's cup|philippine cup/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.pba;
+  }
+  if (/\bmpbl\b|maharlika/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.mpbl;
+  }
+  if (/\buaap\b|\bwuaap\b|university athletic association/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.uaap;
+  }
+  if (/\bncaa\b|national collegiate|collegiate/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.ncaa;
+  }
+  if (/\bpsl\b|pilipinas super league/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.psl;
+  }
+  if (/\bgilas\b/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.gilas;
+  }
+  if (/\bfiba\b/i.test(compAndLeagueText)) {
+    return LEAGUE_METADATA_MAP.fiba;
+  }
+
+  return LEAGUE_METADATA_MAP.pba;
 }
 
 /**
@@ -955,19 +1297,24 @@ export function getTeamAccent(teamName: string, fallbackColor = '#DC2626'): stri
 
 /**
  * Returns the highest-priority logo URL for any team:
- * 1. If fallbackLogo is already provided and valid (e.g., from the API with img.thesports or kadario), use it.
- * 2. If known in TEAM_REGISTRY with a CDN logo, use it.
+ * 1. If known in TEAM_REGISTRY with an official CDN logo, prefer it for NBA/PBA teams or when fallback is missing/SVG.
+ * 2. If fallbackLogo is already provided and valid (e.g., from the API with img.thesports or kadario), use it.
  * 3. Otherwise, return a sharp, generated vector SVG badge.
  */
 export function getTeamLogo(teamName: string, fallbackLogo?: string): string {
+  const profile = findTeamProfile(teamName);
+
+  // If the team is in our registry with an official logo, and fallbackLogo is missing or a data: SVG, use the registry logo
+  if (profile?.logo && profile.logo.trim().length > 5) {
+    if (!fallbackLogo || fallbackLogo.startsWith('data:image/svg') || fallbackLogo.includes('null') || profile.league === 'NBA' || profile.league === 'PBA') {
+      return profile.logo;
+    }
+  }
+
   if (fallbackLogo && fallbackLogo.trim().length > 5 && !fallbackLogo.includes('null')) {
     return fallbackLogo;
   }
 
-  const profile = findTeamProfile(teamName);
-  if (profile?.logo && profile.logo.trim().length > 5) {
-    return profile.logo;
-  }
-
   return generateTeamLogoSvg(teamName, profile?.accent, profile?.initials);
 }
+

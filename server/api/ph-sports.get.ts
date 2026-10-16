@@ -1,4 +1,5 @@
 import { fetchLocalSportsData } from '../utils/local-sports';
+import { classifyMatchLeague } from '../../shared/team-logos';
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
@@ -11,17 +12,28 @@ export default defineEventHandler(async (event) => {
 
     let filteredMatches = data.allMatches;
 
-    if (league) {
-      if (league === 'pba') {
-        filteredMatches = filteredMatches.filter(m => /pba/i.test(m.competition || m.streamLabel || ''));
-      } else if (league === 'mpbl') {
-        filteredMatches = filteredMatches.filter(m => /mpbl/i.test(m.competition || m.streamLabel || ''));
-      } else if (league === 'collegiate' || league === 'uaap' || league === 'ncaa') {
-        filteredMatches = filteredMatches.filter(m => /uaap|ncaa/i.test(m.competition || m.streamLabel || ''));
-      }
+    if (league && league !== 'all') {
+      filteredMatches = filteredMatches.filter(m => {
+        const classified = classifyMatchLeague({
+          homeTeam: m.home?.name,
+          awayTeam: m.away?.name,
+          competition: m.competition,
+          streamLabel: m.streamLabel,
+          sport: m.sport,
+          leagueId: m.leagueId
+        });
+
+        if (league === 'nba') return classified.leagueId === 'nba';
+        if (league === 'pba') return classified.leagueId === 'pba';
+        if (league === 'mpbl') return classified.leagueId === 'mpbl';
+        if (league === 'uaap') return classified.leagueId === 'uaap';
+        if (league === 'ncaa') return classified.leagueId === 'ncaa';
+        if (league === 'collegiate') return classified.leagueId === 'uaap' || classified.leagueId === 'ncaa' || classified.sport === 'collegiate';
+        return classified.leagueId === league;
+      });
     }
 
-    if (status) {
+    if (status && status !== 'all') {
       filteredMatches = filteredMatches.filter(m => m.status.toLowerCase() === status);
     }
 
@@ -37,3 +49,4 @@ export default defineEventHandler(async (event) => {
     });
   }
 });
+

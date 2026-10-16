@@ -5,12 +5,49 @@ import { useFormatters } from '~/composables/useFormatters';
 import { getTeamLogo } from '~/shared/team-logos';
 import AdUnit from '~/components/AdUnit.vue';
 
-defineProps<{
+const props = defineProps<{
   recentArticles?: Article[];
   scores?: GameScore[];
 }>();
 
 const { formatRelativeTime } = useFormatters();
+
+const livePolledScores = ref<GameScore[] | null>(null);
+let sidebarPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const displayScores = computed<GameScore[]>(() => {
+  if (livePolledScores.value && livePolledScores.value.length > 0) {
+    return livePolledScores.value;
+  }
+  return props.scores || [];
+});
+
+async function pollSidebarScores() {
+  try {
+    const res = await $fetch<{ games: GameScore[] }>('/api/scores', {
+      query: { refresh: 'true', _t: Date.now() }
+    });
+    if (res?.games && res.games.length > 0) {
+      livePolledScores.value = res.games;
+    }
+  } catch {
+    // Keep existing scores on transient network error
+  }
+}
+
+onMounted(() => {
+  if (!props.scores || props.scores.length === 0) {
+    pollSidebarScores();
+  }
+  sidebarPollTimer = setInterval(pollSidebarScores, 15000);
+});
+
+onUnmounted(() => {
+  if (sidebarPollTimer) {
+    clearInterval(sidebarPollTimer);
+    sidebarPollTimer = null;
+  }
+});
 </script>
 
 <template>
@@ -27,9 +64,9 @@ const { formatRelativeTime } = useFormatters();
         </NuxtLink>
       </div>
 
-      <div v-if="scores && scores.length > 0" class="space-y-3">
+      <div v-if="displayScores.length > 0" class="space-y-3">
         <div 
-          v-for="game in scores.slice(0, 3)" 
+          v-for="game in displayScores.slice(0, 3)" 
           :key="game.id"
           class="border border-slate-700/70 hover:border-orange-500/40 rounded-xl p-3 bg-slate-950/70 text-xs transition-all shadow-xs group"
         >
@@ -79,24 +116,37 @@ const { formatRelativeTime } = useFormatters();
           <div class="mt-2 text-[10px] text-slate-400 truncate flex items-center justify-between">
             <span class="truncate text-slate-400">{{ game.venue.split(',')[0] }}</span>
           </div>
-          <div class="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px]">
+          <div class="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between gap-2 text-[10px]">
             <NuxtLink 
-              to="/scores-and-schedules" 
-              class="font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded-md"
+              to="/local-sports" 
+              class="font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded-md truncate"
               :class="game.status === 'live' 
                 ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]' 
                 : 'bg-slate-800 text-slate-300 hover:text-white'"
             >
-              <span v-if="game.status === 'live'" class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-              <span>{{ game.status === 'live' ? 'View Live' : 'View Match' }}</span>
+              <span v-if="game.status === 'live'" class="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0"></span>
+              <span class="truncate">Watch {{ game.awayTeam }} vs {{ game.homeTeam }} Live</span>
             </NuxtLink>
-            <NuxtLink 
-              to="/scores-and-schedules" 
-              class="font-black text-slate-950 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-300 px-2.5 py-0.5 rounded-md flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(249,115,22,0.35)]"
-            >
-              <Flame class="w-3 h-3 text-red-900" />
-              <span>Bet Now</span>
-            </NuxtLink>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <NuxtLink
+                to="/scores-and-schedules"
+                @click.stop
+                title="View Match Scoreboard & Details"
+                class="font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-0.5 rounded-full flex items-center gap-1 transition-all shrink-0 whitespace-nowrap"
+              >
+                <span>View</span>
+              </NuxtLink>
+              <a 
+                href="https://tipoff.bybetcasino.ph/c6Yv/"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                @click.stop
+                title="Bet on Live Games — Play at Bybet"
+                class="font-black text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 px-2.5 py-0.5 rounded-full flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(249,115,22,0.35)] shrink-0 whitespace-nowrap"
+              >
+                <span>Bet Now ↗</span>
+              </a>
+            </div>
           </div>
         </div>
 

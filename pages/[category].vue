@@ -1,23 +1,42 @@
 <script setup lang="ts">
 import { getCategoryBySlug } from '~/shared/categories';
-import type { Article, ContentType } from '~/shared/types';
+import type { Article, ContentType, GameScore } from '~/shared/types';
+import { SEO_SLUG_TO_TAB_ID, SEO_TABS, PROMO_TARGET_URL } from '~/shared/seo-routing';
+import { getTeamLogo } from '~/shared/team-logos';
+import LocalSportsHub from '~/components/LocalSportsHub.vue';
 import ArticleCard from '~/components/ArticleCard.vue';
 import EditorialSidebar from '~/components/EditorialSidebar.vue';
 import AdUnit from '~/components/AdUnit.vue';
 import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
-import { ChevronLeft, ChevronRight, FileQuestion, Tv } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, FileQuestion, Tv, RefreshCw } from 'lucide-vue-next';
 
 const route = useRoute();
-const router = useRouter();
 const config = useRuntimeConfig();
 
-const categorySlug = computed(() => String(route.params.category || ''));
+const categorySlug = computed(() => String(route.params.category || '').replace(/\/+$/, ''));
+const lowerSlug = computed(() => categorySlug.value.toLowerCase());
+
+// 1. Handle /c6Yv/ redirect immediately if hit via dynamic category route
+if (lowerSlug.value === 'c6yv') {
+  if (import.meta.client) {
+    window.location.replace(PROMO_TARGET_URL);
+  } else {
+    await navigateTo(PROMO_TARGET_URL, { redirectCode: 302, external: true });
+  }
+}
+
+// 2. Check if this is one of the Clean SEO Live Hub URLs (/nba-live-today/, /live-now/, /pba-live-today/, etc.)
+const matchedSeoTabId = computed(() => SEO_SLUG_TO_TAB_ID[lowerSlug.value] || null);
+const matchedSeoTabConfig = computed(() =>
+  matchedSeoTabId.value ? SEO_TABS.find(t => t.id === matchedSeoTabId.value) || SEO_TABS[0] : null
+);
+
 const pageNum = computed(() => Math.max(1, Number(route.query.page || 1)));
 const selectedContentType = ref<ContentType | 'all'>('all');
 
-// Verify category in registry
+// Verify category in registry when not a Live Hub SEO slug
 const category = getCategoryBySlug(categorySlug.value);
-if (!category) {
+if (!category && !matchedSeoTabId.value && lowerSlug.value !== 'c6yv') {
   throw createError({
     statusCode: 404,
     statusMessage: 'Category Not Found',
@@ -28,6 +47,9 @@ if (!category) {
 
 // Fetch articles for this category
 const { data, refresh } = await useAsyncData(`cat-${categorySlug.value}-${pageNum.value}`, async () => {
+  if (!category) {
+    return { articles: [], total: 0, page: 1, totalPages: 1 };
+  }
   const query: Record<string, any> = {
     category: categorySlug.value,
     page: pageNum.value,
@@ -48,36 +70,124 @@ const articles = computed(() => data.value?.articles || []);
 const total = computed(() => data.value?.total || 0);
 const totalPages = computed(() => data.value?.totalPages || 1);
 
-// Canonical and SEO
-const siteUrl = computed(() => (config.public.siteUrl || '').replace(/\/$/, ''));
+// Canonical and SEO for regular editorial category pages
+const siteUrl = computed(() => (config.public.siteUrl || 'https://tipoff.bybetcasino.ph').replace(/\/$/, ''));
 const canonicalUrl = computed(() => {
-  const base = siteUrl.value ? `${siteUrl.value}${category.path}` : category.path;
+  if (matchedSeoTabConfig.value) {
+    return `https://tipoff.bybetcasino.ph${matchedSeoTabConfig.value.cleanPath}`.toLowerCase();
+  }
+  const catPath = category?.path || `/${lowerSlug.value}`;
+  const base = `${siteUrl.value}${catPath}`.toLowerCase();
   return pageNum.value > 1 ? `${base}?page=${pageNum.value}` : base;
 });
 
-const shouldNoIndex = computed(() => total.value === 0);
+const shouldNoIndex = computed(() => !matchedSeoTabId.value && total.value === 0);
 
-useHead({
-  title: category.seoTitle,
-  meta: [
-    { name: 'description', content: category.seoDescription },
-    { property: 'og:title', content: category.seoTitle },
-    { property: 'og:description', content: category.seoDescription },
-    ...(shouldNoIndex.value ? [{ name: 'robots', content: 'noindex, follow' }] : [])
-  ],
-  link: [
-    { rel: 'canonical', href: canonicalUrl.value }
-  ]
-});
+if (category && !matchedSeoTabId.value) {
+  useHead({
+    title: category.seoTitle,
+    meta: [
+      { name: 'description', content: category.seoDescription },
+      { property: 'og:title', content: category.seoTitle },
+      { property: 'og:description', content: category.seoDescription },
+      { property: 'og:url', content: canonicalUrl.value },
+      { property: 'og:site_name', content: 'TipOff Bybet PH' },
+      ...(shouldNoIndex.value ? [{ name: 'robots', content: 'noindex, follow' }] : [])
+    ],
+    link: [
+      { rel: 'canonical', href: canonicalUrl.value }
+    ]
+  });
+}
 
 function handleFilter(type: ContentType | 'all') {
   selectedContentType.value = type;
   refresh();
 }
+
+// Map category slug to league query for real-time API scores
+const mappedLeagueForScores = computed(() => {
+  const s = lowerSlug.value;
+  if (s.startsWith('pba')) return 'pba';
+  if (s.startsWith('mpbl')) return 'mpbl';
+  if (s.startsWith('uaap')) return 'uaap';
+  if (s.startsWith('ncaa')) return 'ncaa';
+  if (s.startsWith('gilas')) return 'gilas';
+  if (s.startsWith('nba')) return 'nba';
+  return 'all';
+});
+
+const forceScoresRefresh = ref(false);
+const isSyncingScores = ref(false);
+let categoryScoresTimer: ReturnType<typeof setInterval> | null = null;
+
+const { data: scoresRes, refresh: refreshScores } = await useAsyncData(
+  `cat-scores-${categorySlug.value}`,
+  async () => {
+    return await $fetch<{
+      source: string;
+      lastUpdatedUtc: string;
+      games: GameScore[];
+    }>('/api/scores', {
+      query: {
+        league: mappedLeagueForScores.value,
+        refresh: forceScoresRefresh.value ? 'true' : undefined,
+        _t: Date.now()
+      }
+    });
+  },
+  {
+    watch: [mappedLeagueForScores]
+  }
+);
+
+const categoryScores = computed(() => scoresRes.value?.games || []);
+
+async function syncRealtimeCategoryScores() {
+  if (isSyncingScores.value) return;
+  isSyncingScores.value = true;
+  forceScoresRefresh.value = true;
+  try {
+    await refreshScores();
+  } finally {
+    forceScoresRefresh.value = false;
+    isSyncingScores.value = false;
+  }
+}
+
+onMounted(() => {
+  categoryScoresTimer = setInterval(() => {
+    syncRealtimeCategoryScores();
+  }, 15000);
+});
+
+onUnmounted(() => {
+  if (categoryScoresTimer) {
+    clearInterval(categoryScoresTimer);
+    categoryScoresTimer = null;
+  }
+});
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- Clean SEO Live Hub Route View (/nba-live-today/, /live-now/, /pba-live-today/, etc.) -->
+  <div v-if="matchedSeoTabId" class="max-w-5xl mx-auto py-2 space-y-4">
+    <div class="flex items-center justify-between px-1">
+      <div>
+        <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">
+          {{ matchedSeoTabConfig?.anchorText || 'NBA & PBA Live Today' }}
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">
+          {{ matchedSeoTabConfig?.description }}
+        </p>
+      </div>
+    </div>
+
+    <LocalSportsHub :initial-league="matchedSeoTabId" :max-items="60" />
+  </div>
+
+  <!-- Standard Editorial Category View -->
+  <div v-else-if="category" class="space-y-6">
     <!-- Quick League Navigation Bar -->
     <LeagueFilterBar mode="navigate" class="mb-6" />
 
@@ -144,32 +254,114 @@ function handleFilter(type: ContentType | 'all') {
       </div>
     </header>
 
-    <!-- Live PH Sports Callout for PBA / MPBL pages -->
+    <!-- NBA Preseason Fight Tomorrow 5-Prediction Blog Showcase -->
+    <div v-if="categorySlug === 'nba-news' || categorySlug === 'nba'" class="mb-10">
+      <NbaPreseasonPredictions />
+    </div>
+
+    <!-- Real-Time API Scoreboard for PBA / MPBL / UAAP / NCAA / Gilas / NBA Category Pages -->
     <div 
-      v-if="categorySlug === 'pba-news' || categorySlug === 'mpbl-news'"
-      class="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/90 via-slate-900/90 to-red-950/90 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg border border-red-500/40 backdrop-blur-xl"
+      v-if="categoryScores.length > 0"
+      class="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 text-white shadow-xl border border-slate-700/80 backdrop-blur-xl space-y-4"
     >
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-red-600/30 border border-red-500/50 flex items-center justify-center text-amber-300 shrink-0 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
-          <Tv class="w-5 h-5 text-red-400" />
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-red-600/25 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
+            <Tv class="w-4 h-4 text-red-400" />
+          </div>
+          <div>
+            <h2 class="text-sm sm:text-base font-black text-white flex items-center gap-2">
+              <span>{{ category.name }} Live Scoreboard</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Auto-updating real-time scores, quarter clocks, and official match results every 15 seconds.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 class="text-sm font-black text-white flex items-center gap-2">
-            <span>Official Live Scores &amp; Video Streams Available</span>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">Live</span>
-          </h2>
-          <p class="text-xs text-slate-300 mt-0.5">
-            Follow {{ category.name }} games in real-time with quarter clocks, live scores &amp; match signals.
-          </p>
+        <div class="flex items-center gap-2 shrink-0">
+          <NuxtLink
+            :to="mappedLeagueForScores === 'pba' ? '/pba-live-today/' : '/local-sports'"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-xs font-black rounded-xl transition-all shadow-sm"
+          >
+            <span>Open Live Streams</span>
+            <span>&rarr;</span>
+          </NuxtLink>
         </div>
       </div>
-      <NuxtLink
-        to="/local-sports"
-        class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-xs font-black rounded-xl transition-all shadow-[0_0_15px_rgba(239,68,68,0.4)] shrink-0 self-start sm:self-auto"
-      >
-        <span>Open Live Sports Hub</span>
-        <span>&rarr;</span>
-      </NuxtLink>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div
+          v-for="game in categoryScores.slice(0, 6)"
+          :key="game.id"
+          class="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between gap-2.5 transition-all"
+        >
+          <div class="flex items-center justify-between text-[11px] text-slate-400 font-bold">
+            <span class="text-orange-400 uppercase font-black">{{ game.league }} · {{ game.stage }}</span>
+            <span
+              class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
+              :class="game.status === 'live' ? 'bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse' : 'bg-slate-800 text-slate-300'"
+            >
+              {{ game.statusDetail }}
+            </span>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <img
+                  :src="game.homeTeamLogo || getTeamLogo(game.homeTeam)"
+                  :alt="game.homeTeam"
+                  class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
+                  loading="lazy"
+                />
+                <span class="text-xs font-bold text-white truncate">{{ game.homeTeam }}</span>
+              </div>
+              <span class="font-mono text-sm font-black text-amber-400 shrink-0">
+                {{ game.homeScore !== undefined ? game.homeScore : '—' }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <img
+                  :src="game.awayTeamLogo || getTeamLogo(game.awayTeam)"
+                  :alt="game.awayTeam"
+                  class="w-5 h-5 object-contain rounded-xs bg-white p-0.5 shrink-0"
+                  loading="lazy"
+                />
+                <span class="text-xs font-bold text-white truncate">{{ game.awayTeam }}</span>
+              </div>
+              <span class="font-mono text-sm font-black text-amber-400 shrink-0">
+                {{ game.awayScore !== undefined ? game.awayScore : '—' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[10px]">
+            <NuxtLink
+              :to="mappedLeagueForScores === 'pba' ? '/pba-live-today/' : '/local-sports'"
+              class="font-bold text-slate-300 hover:text-amber-300 truncate"
+            >
+              Watch {{ game.awayTeam }} vs {{ game.homeTeam }} Live
+            </NuxtLink>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <NuxtLink
+                to="/scores-and-schedules"
+                class="px-2.5 py-0.5 rounded-full font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors whitespace-nowrap"
+              >
+                View
+              </NuxtLink>
+              <a
+                href="https://tipoff.bybetcasino.ph/c6Yv/"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="px-2.5 py-0.5 rounded-full font-black bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 transition-all whitespace-nowrap"
+              >
+                Bet Now ↗
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -238,7 +430,7 @@ function handleFilter(type: ContentType | 'all') {
 
       <!-- Sidebar -->
       <div class="lg:col-span-4">
-        <EditorialSidebar />
+        <EditorialSidebar :scores="categoryScores" />
       </div>
     </div>
   </div>

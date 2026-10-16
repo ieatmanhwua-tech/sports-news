@@ -60,7 +60,7 @@ import tipoffLogo from '~/assets/img/TipOffPh_logo.png';
       <!-- Bottom Copyright & Timezone Notice -->
       <div class="mt-8 pt-6 border-t border-slate-800/50 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500">
         <div>
-          &copy; {{ new Date().getFullYear() }} TipOffPh. All rights reserved. Timezone: Asia/Manila (PHT).
+          &copy; 2026 TipOffPh. All rights reserved. Timezone: Asia/Manila (PHT).
         </div>
         <div class="mt-2 sm:mt-0 flex items-center gap-3">
           <span>Targeting Hostinger Managed Node.js (Node 22)</span>

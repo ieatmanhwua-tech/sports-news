@@ -1,5 +1,5 @@
 User-agent: *
-Disallow: /
+Allow: /
+Disallow: /api/
 
-User-agent: Googlebot
-Disallow: /
+Sitemap: https://tipoff.bybetcasino.ph/sitemap.xml

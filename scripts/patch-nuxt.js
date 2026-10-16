@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+// 1. Suppress Nuxt CLI dev network warning
 const cliDist = path.join(process.cwd(), 'node_modules/@nuxt/cli/dist');
 if (fs.existsSync(cliDist)) {
   const files = fs.readdirSync(cliDist);
@@ -18,4 +19,20 @@ if (fs.existsSync(cliDist)) {
       }
     }
   }
+}
+
+// 2. Patch entry.async.js to use static import on client and catch any unhandled rejections
+const entryAsyncPath = path.join(process.cwd(), 'node_modules/nuxt/dist/app/entry.async.js');
+if (fs.existsSync(entryAsyncPath)) {
+  const patchedEntryAsync = [
+    '//#region src/app/entry.async.ts',
+    'import clientEntry from "#app/entry";',
+    'const entry = import.meta.server ? (ctx) => import("#app/entry").then((m) => m.default(ctx)) : () => Promise.resolve(clientEntry);',
+    'if (import.meta.client) Promise.resolve(entry()).catch(() => {});',
+    '//#endregion',
+    'export { entry as default };',
+    ''
+  ].join('\n');
+  fs.writeFileSync(entryAsyncPath, patchedEntryAsync, 'utf-8');
+  console.log('✓ Patched node_modules/nuxt/dist/app/entry.async.js to use static client import');
 }

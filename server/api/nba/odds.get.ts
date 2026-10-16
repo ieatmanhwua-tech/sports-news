@@ -23,10 +23,8 @@ export default defineEventHandler(async (event) => {
     }
 
     const response: NbaOddsResponse = {
-      source: status.rateLimitProtected
-        ? 'NBA Sports API (Verified Consensus Lines & Protected Cache)'
-        : 'NBA Sports API (Cloudflare Worker Live Feed)',
-      upstreamUrl: 'https://nba-sports-api.ieatmanhwua.workers.dev/odds',
+      source: 'Live88 Official Real-Time API (Bootstrap & Matches)',
+      upstreamUrl: 'https://live88.eu.cc/api/v1/bootstrap?site=-Qw82foL4XnLt_vBp8LVXjwW',
       lastUpdatedUtc: new Date().toISOString(),
       totalGames: games.length,
       games,
@@ -44,8 +42,8 @@ export default defineEventHandler(async (event) => {
     const fallbackGames = await fetchNbaOdds(false);
 
     const safeResponse: NbaOddsResponse = {
-      source: 'NBA Sports API (Verified Odds Fallback Engine)',
-      upstreamUrl: 'https://nba-sports-api.ieatmanhwua.workers.dev/odds',
+      source: 'Live88 Official Real-Time API (Fallback Cache)',
+      upstreamUrl: 'https://live88.eu.cc/api/v1/bootstrap?site=-Qw82foL4XnLt_vBp8LVXjwW',
       lastUpdatedUtc: new Date().toISOString(),
       totalGames: fallbackGames.length,
       games: fallbackGames.slice(0, limit),

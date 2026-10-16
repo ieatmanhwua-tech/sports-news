@@ -30,6 +30,7 @@ function handleSearch() {
 const primaryNav = [
   { name: 'Home', path: '/' },
   { name: 'Latest News', path: '/latest-news' },
+  { name: 'NBA', path: '/nba' },
   { name: 'PBA', path: '/pba-news' },
   { name: 'MPBL', path: '/mpbl-news' },
   { name: 'UAAP', path: '/uaap-basketball' },
@@ -172,34 +173,44 @@ const primaryNav = [
           </nav>
         </div>
 
-        <!-- Search Bar and Mobile Actions -->
-        <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Search Bar, Promo CTA Buttons & Mobile Actions -->
+        <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <!-- Mobile 'PH Live Sports & Streams' Pill with Red Pulsing Dot -->
           <NuxtLink
             to="/local-sports"
-            class="lg:hidden relative inline-flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-black text-white bg-gradient-to-r from-red-600/80 to-orange-600/70 border border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.45)] ring-1 ring-red-400/40 shrink-0"
+            class="lg:hidden relative inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black text-white bg-gradient-to-r from-red-600/80 to-orange-600/70 border border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.45)] ring-1 ring-red-400/40 shrink-0"
             title="Philippine Live Sports & Streams"
           >
-            <span class="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
+            <span class="relative flex h-1.5 w-1.5">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-90"></span>
-              <span class="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-500 shadow-[0_0_6px_#ef4444]"></span>
+              <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
             </span>
-            <span class="hidden sm:inline">PH Live Sports &amp; Streams</span>
-            <span class="sm:hidden tracking-tight">PH Live</span>
+            <span class="tracking-tight">LIVE</span>
           </NuxtLink>
 
           <!-- Desktop Inline Search -->
-          <form @submit.prevent="handleSearch" class="hidden sm:flex items-center relative">
+          <form @submit.prevent="handleSearch" class="hidden xl:flex items-center relative">
             <input 
               v-model="searchQuery" 
               type="text" 
               placeholder="Search PBA, UAAP, players..."
-              class="w-44 lg:w-56 bg-slate-900 border border-slate-700 text-xs text-white rounded-md pl-3 pr-8 py-1.5 focus:outline-none focus:border-[#E67E22] focus:ring-1 focus:ring-[#E67E22] placeholder:text-slate-500 transition-all"
+              class="w-40 bg-slate-900 border border-slate-700 text-xs text-white rounded-md pl-3 pr-8 py-1.5 focus:outline-none focus:border-[#E67E22] focus:ring-1 focus:ring-[#E67E22] placeholder:text-slate-500 transition-all"
             />
             <button type="submit" class="absolute right-2 text-slate-400 hover:text-amber-400" aria-label="Submit search">
               <Search class="w-3.5 h-3.5" />
             </button>
           </form>
+
+          <!-- High-Contrast Gold/Amber "Bet Now" CTA Button -->
+          <a
+            href="https://tipoff.bybetcasino.ph/c6Yv/"
+            target="_blank"
+            rel="nofollow sponsored noopener"
+            title="Bet on Live Games — Play at Bybet"
+            class="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-black uppercase tracking-wide bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.45)] border border-amber-300/80 transition-all whitespace-nowrap shrink-0"
+          >
+            <span>Bet Now</span>
+          </a>
 
           <!-- Mobile Search Toggle Button -->
           <button 
@@ -240,6 +251,19 @@ const primaryNav = [
           <Search class="w-4 h-4" />
         </button>
       </form>
+
+      <!-- Mobile Promo Action Button -->
+      <div>
+        <a
+          href="https://tipoff.bybetcasino.ph/c6Yv/"
+          target="_blank"
+          rel="nofollow sponsored noopener"
+          title="Bet Now"
+          class="flex items-center justify-center py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 shadow-md"
+        >
+          Bet Now
+        </a>
+      </div>
 
       <!-- Primary Mobile Nav Links -->
       <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-4">

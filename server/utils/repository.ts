@@ -1,11 +1,12 @@
 import { getDatabaseStatus, executeQuery, inMemoryStore } from '../db/client';
 import { CATEGORIES_REGISTRY, CATEGORY_MAP, PARENT_CATEGORY_ALIASES } from '../../shared/categories';
 import type { Article, Author, CategoryInfo, ContactSubmission, ContentType, ArticleStatus } from '../../shared/types';
+import { ensureTodaysMatchBlogsSynced, buildFallbackMatchBlogForSlug } from './match-blogs';
 
 export class ArticleRepository {
   /**
    * Get public articles with optional filters.
-   * Only returns status = 'published' and publishedAt <= now.
+   * Only returns status = 'published'.
    */
   static async getPublicArticles(options: {
     categorySlug?: string;
@@ -18,16 +19,11 @@ export class ArticleRepository {
     isFeatured?: boolean;
     isBreaking?: boolean;
   } = {}): Promise<{ articles: Article[]; total: number }> {
+    await ensureTodaysMatchBlogsSynced();
     const status = await getDatabaseStatus();
-    const nowUtc = new Date().toISOString();
 
     const runInMemoryFallback = () => {
-      let filtered = inMemoryStore.articles.filter(a => {
-        // Enforce published and release time boundary in UTC
-        if (a.status !== 'published') return false;
-        if (new Date(a.publishedAt).getTime() > new Date(nowUtc).getTime()) return false;
-        return true;
-      });
+      let filtered = inMemoryStore.articles.filter(a => a.status === 'published');
 
       if (options.categorySlug) {
         const matchSlugs = PARENT_CATEGORY_ALIASES[options.categorySlug] || [options.categorySlug];
@@ -76,7 +72,9 @@ export class ArticleRepository {
       }
 
       // Sort newest-first deterministically
-      filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      filtered.sort((a, b) => {
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
 
       const total = filtered.length;
       const offset = options.offset || 0;
@@ -228,22 +226,30 @@ export class ArticleRepository {
    * Checks slug_redirects if slug moved.
    */
   static async getPublicArticleBySlug(slug: string): Promise<{ article: Article | null; redirectSlug?: string }> {
+    await ensureTodaysMatchBlogsSynced();
     const status = await getDatabaseStatus();
-    const nowUtc = new Date().toISOString();
+    const cleanSlug = decodeURIComponent(String(slug || '')).trim().replace(/\/+$/, '');
+    const lowerSlug = cleanSlug.toLowerCase();
 
     const runInMemoryFallback = () => {
       // Check redirect map
-      const redirectedTo = inMemoryStore.slugRedirects.get(slug);
+      const redirectedTo = inMemoryStore.slugRedirects.get(cleanSlug) || inMemoryStore.slugRedirects.get(lowerSlug);
       if (redirectedTo) {
         return { article: null, redirectSlug: redirectedTo };
       }
 
       inMemoryStore.refreshRelations();
-      const article = inMemoryStore.articles.find(a =>
-        a.slug === slug &&
-        a.status === 'published' &&
-        new Date(a.publishedAt).getTime() <= new Date(nowUtc).getTime()
-      );
+      const normalizedTarget = lowerSlug.replace(/-highlights-box-score$/, '-match-blog-today');
+      const altTarget = lowerSlug.replace(/-match-blog-today$/, '-highlights-box-score');
+
+      let article = inMemoryStore.articles.find(a => {
+        const s = String(a.slug || '').toLowerCase();
+        return (s === lowerSlug || s === normalizedTarget || s === altTarget) && a.status === 'published';
+      });
+
+      if (!article) {
+        article = buildFallbackMatchBlogForSlug(lowerSlug) || undefined;
+      }
 
       return { article: article || null };
     };
@@ -256,7 +262,7 @@ export class ArticleRepository {
       // Check redirect in MySQL
       const redirectRows = await executeQuery<{ new_slug: string }>(
         'SELECT new_slug FROM slug_redirects WHERE old_slug = ? LIMIT 1',
-        [slug]
+        [cleanSlug]
       );
       if (redirectRows.length > 0 && redirectRows[0]) {
         return { article: null, redirectSlug: redirectRows[0].new_slug };
@@ -279,12 +285,12 @@ export class ArticleRepository {
         FROM articles a
         JOIN authors ath ON a.author_id = ath.id
         JOIN categories c ON a.primary_category_id = c.id
-        WHERE a.slug = ? AND a.status = 'published' AND a.published_at <= NOW()
+        WHERE a.slug = ? AND a.status = 'published'
         LIMIT 1
       `;
 
-      const rows = await executeQuery<any>(sql, [slug]);
-      if (rows.length === 0) return { article: null };
+      const rows = await executeQuery<any>(sql, [cleanSlug]);
+      if (rows.length === 0) return runInMemoryFallback();
 
       const r = rows[0];
       const article: Article = {
