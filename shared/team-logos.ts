@@ -1008,6 +1008,71 @@ export function isVerifiedPbaTeam(teamName: string): boolean {
   return profile?.league === 'PBA';
 }
 
+const SOCCER_CLUB_OR_COMP_REGEX =
+  /\b(uefa|europa league|conference league|champions league|copa libertadores|premier league|la liga|bundesliga|ligue 1|mls|fifa|futebol|futbol|sk brann|brann|bologna|go ahead eagles|viktoria plzen|paok|sturm graz|midtjylland|nottingham forest|celta vigo|malmo|dinamo zagreb|feyenoord|panathinaikos|as roma|lille|celtic|maccabi|rangers|aston villa|porto|fcsb|ferencvaros|ludogorets|salzburg|real betis|genk|utrecht|freiburg|braga|stuttgart|fenerbahce|basel|lyon|galatasaray|young boys|ogc nice|\bnice\b|\bfc\b|\bfk\b)\b/i;
+
+/**
+ * Validates that a matchup is a genuine basketball game and NOT a corrupted cross-sport or cross-league mashup
+ * (e.g., rejects "SK Brann vs Indiana Pacers", "Chicago Bulls vs Bologna", "TNT Tropang Giga vs Panathinaikos").
+ */
+export function isValidBasketballMatchup(
+  homeTeamName?: string,
+  awayTeamName?: string,
+  competition?: string,
+  sport?: string
+): boolean {
+  const home = String(homeTeamName || '').trim();
+  const away = String(awayTeamName || '').trim();
+  if (!home || !away) return false;
+  if (home.toLowerCase() === away.toLowerCase()) return false;
+
+  const comp = String(competition || '').trim();
+  const rawSport = String(sport || '').toLowerCase().trim();
+
+  if (SOCCER_CLUB_OR_COMP_REGEX.test(`${home} ${away} ${comp}`)) {
+    return false;
+  }
+
+  const isBasketballComp =
+    /baloncesto|basket|lnbp|lnb|liga nacional de baloncesto|liga profesional de baloncesto|bsn|cibacopa|liga sudamericana|bcl|fiba|nba|pba|mpbl|uaap|ncaa|easl|nbl|cba|kbl|bbl|acb|euroleague|eurocup|aba league|vtb|wnba|korisliiga|b\.league/i.test(
+      comp
+    );
+  if ((rawSport === 'football' || rawSport === 'soccer') && !isBasketballComp) {
+    return false;
+  }
+
+  const homeProfile = findTeamProfile(home);
+  const awayProfile = findTeamProfile(away);
+
+  // If either team is an official NBA franchise, BOTH teams must be official NBA franchises
+  if (homeProfile?.league === 'NBA' || awayProfile?.league === 'NBA') {
+    return homeProfile?.league === 'NBA' && awayProfile?.league === 'NBA';
+  }
+
+  // If either team is an official PBA franchise, BOTH must be PBA franchises (unless EASL)
+  const isEasl = /\beasl\b|east asia super league/i.test(comp);
+  if ((homeProfile?.league === 'PBA' || awayProfile?.league === 'PBA') && !isEasl) {
+    return homeProfile?.league === 'PBA' && awayProfile?.league === 'PBA';
+  }
+
+  // If either team is an MPBL team, BOTH must be MPBL teams
+  if (homeProfile?.league === 'MPBL' || awayProfile?.league === 'MPBL') {
+    return homeProfile?.league === 'MPBL' && awayProfile?.league === 'MPBL';
+  }
+
+  // If either team is a UAAP team, BOTH must be UAAP teams
+  if (homeProfile?.league === 'UAAP' || awayProfile?.league === 'UAAP') {
+    return homeProfile?.league === 'UAAP' && awayProfile?.league === 'UAAP';
+  }
+
+  // If either team is an NCAA PH team, BOTH must be NCAA PH teams
+  if (homeProfile?.league === 'NCAA' || awayProfile?.league === 'NCAA') {
+    return homeProfile?.league === 'NCAA' && awayProfile?.league === 'NCAA';
+  }
+
+  return true;
+}
+
 /**
  * Returns the canonical official team name from TEAM_REGISTRY if matched (e.g. "Phoenix Fuelmasters" -> "Phoenix Fuel Masters").
  */
@@ -1167,12 +1232,8 @@ export function classifyMatchLeague(input: {
   const awayProfile = findTeamProfile(awayName);
   const teamLeagues = [homeProfile?.league, awayProfile?.league].filter(Boolean);
 
-  // 1. Strict NBA Team Verification: BOTH teams (or at least one verified NBA team in an official NBA competition) must be official NBA franchises
-  if (
-    !isWomensLeague &&
-    ((homeProfile?.league === 'NBA' && awayProfile?.league === 'NBA') ||
-      (teamLeagues.includes('NBA') && (/^nba$|national basketball association/i.test((input.competition || '').trim()) || !input.competition)))
-  ) {
+  // 1. Strict NBA Team Verification: BOTH teams must be official NBA franchises
+  if (!isWomensLeague && homeProfile?.league === 'NBA' && awayProfile?.league === 'NBA') {
     return LEAGUE_METADATA_MAP.nba;
   }
 
@@ -1198,12 +1259,16 @@ export function classifyMatchLeague(input: {
   if (/\bmpbl\b|maharlika/i.test(compOnly)) {
     return LEAGUE_METADATA_MAP.mpbl;
   }
-  if (/\bpba\b|governors' cup|philippine basketball governors|philippine cup|commissioner's cup/i.test(compOnly)) {
+  if (
+    homeProfile?.league === 'PBA' &&
+    awayProfile?.league === 'PBA' &&
+    /\bpba\b|governors' cup|philippine basketball|philippine cup|commissioner's cup/i.test(compOnly)
+  ) {
     return LEAGUE_METADATA_MAP.pba;
   }
 
-  // 2. If either team is a PBA team -> PBA
-  if (teamLeagues.includes('PBA')) {
+  // 2. If both teams are PBA teams -> PBA
+  if (homeProfile?.league === 'PBA' && awayProfile?.league === 'PBA') {
     return LEAGUE_METADATA_MAP.pba;
   }
 

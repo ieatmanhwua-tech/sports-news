@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@source not "../../.nuxt/**";
+@source not "../../.nuxt-build/**";
+@source not "../../.output/**";
+@source not "../../.data/**";
 
 @layer base {
   body {

@@ -178,7 +178,7 @@ onUnmounted(() => {
       <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3.5">
         <h3 class="font-black text-sm uppercase tracking-wider text-white flex items-center gap-1.5 drop-shadow-sm">
           <TrendingUp class="w-4 h-4 text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
-          <span>Latest News</span>
+          <span>Trending News</span>
         </h3>
         <NuxtLink to="/latest-news" class="text-xs text-cyan-400 hover:text-cyan-300 hover:underline font-bold">
           View All &rarr;

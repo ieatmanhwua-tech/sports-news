@@ -1,6 +1,8 @@
 # Nuxt & Node build outputs
 .output
 .nuxt
+.nuxt-build
+.data
 dist
 node_modules
 

@@ -88,43 +88,43 @@ const primaryNav = [
 
     <!-- Main Navigation Bar (Compact height on mobile, roomy on desktop) -->
     <div class="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between min-h-[3.25rem] sm:min-h-[4.5rem] md:min-h-[5.5rem] py-1.5 sm:py-2">
-        <!-- Brand Wordmark -->
-        <div class="flex items-center gap-4 sm:gap-6 lg:gap-8">
+      <div class="flex items-center justify-between gap-2 min-h-[3.25rem] sm:min-h-[4.5rem] md:min-h-[5rem] py-1.5 sm:py-2">
+        <!-- Brand Wordmark & Primary Nav -->
+        <div class="flex items-center gap-3 sm:gap-4 lg:gap-4 xl:gap-6 min-w-0">
           <NuxtLink to="/" class="group flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded py-0.5 shrink-0">
             <img 
               :src="tipoffLogo" 
               alt="TipOffPh - The Philippine Basketball Court" 
-              class="h-9 sm:h-13 md:h-16 lg:h-[4.75rem] w-auto max-w-[125px] sm:max-w-[220px] md:max-w-[340px] object-contain transition-transform group-hover:scale-[1.02] drop-shadow-sm"
+              class="h-9 sm:h-12 md:h-14 lg:h-13 xl:h-15 w-auto max-w-[125px] sm:max-w-[190px] md:max-w-[220px] xl:max-w-[250px] object-contain transition-transform group-hover:scale-[1.02] drop-shadow-sm"
               width="2172"
               height="724"
             />
             <span class="sr-only">TipOffPh - The Philippine Basketball Court</span>
           </NuxtLink>
 
-          <!-- Desktop Primary Nav -->
-          <nav class="hidden lg:flex items-center space-x-1" aria-label="Main Navigation">
+          <!-- Desktop Primary Nav (Strictly Single-Line Inline) -->
+          <nav class="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-nowrap whitespace-nowrap" aria-label="Main Navigation">
             <NuxtLink 
               v-for="item in primaryNav" 
               :key="item.path" 
               :to="item.path"
-              class="px-2.5 py-1.5 text-sm font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded transition-colors"
+              class="px-2 xl:px-2.5 py-1.5 text-xs xl:text-sm font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded transition-colors whitespace-nowrap shrink-0 inline-flex items-center"
               active-class="text-amber-400 bg-slate-800/90 font-bold"
             >
               {{ item.name }}
             </NuxtLink>
 
             <!-- 'More' Dropdown with grouped secondary categories -->
-            <div class="relative" @mouseleave="isMoreDropdownOpen = false">
+            <div class="relative shrink-0" @mouseleave="isMoreDropdownOpen = false">
               <button 
                 type="button"
                 @click="isMoreDropdownOpen = !isMoreDropdownOpen"
                 @mouseenter="isMoreDropdownOpen = true"
-                class="px-2.5 py-1.5 text-sm font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-amber-500"
+                class="px-2 xl:px-2.5 py-1.5 text-xs xl:text-sm font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded transition-colors inline-flex items-center gap-1 whitespace-nowrap shrink-0 focus-visible:ring-2 focus-visible:ring-amber-500"
                 :aria-expanded="isMoreDropdownOpen"
               >
-                More Topics
-                <ChevronDown class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="{ 'rotate-180': isMoreDropdownOpen }" />
+                <span>More Topics</span>
+                <ChevronDown class="w-3.5 h-3.5 xl:w-4 xl:h-4 text-slate-400 transition-transform duration-200 shrink-0" :class="{ 'rotate-180': isMoreDropdownOpen }" />
               </button>
 
               <!-- Mega Dropdown Menu -->

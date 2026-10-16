@@ -382,13 +382,13 @@ useHead({
           <LeadArticleCard :article="homeData.featured" />
         </section>
 
-        <!-- Latest News Component with Thumbnails, Excerpts, and Category Filters -->
+        <!-- Trending News Component with Thumbnails, Excerpts, and Category Filters -->
         <LatestNews 
           :initial-articles="homeData?.latest"
           :exclude-id="homeData?.featured?.id" 
           :limit="6"
           :show-filters="true"
-          title="Latest News"
+          title="Trending News"
           subtitle="Continuous real-time stream of Philippine basketball updates"
         />
 

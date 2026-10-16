@@ -29,7 +29,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: 'Latest News',
+  title: 'Trending News',
   subtitle: 'Fresh updates, scores, and breaking developments across Philippine basketball',
   limit: 6,
   category: '',

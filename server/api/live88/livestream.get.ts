@@ -1,9 +1,10 @@
-import { fetchLocalSportsData } from '../../utils/local-sports';
+import { fetchLocalSportsData, isLive88BasketballMatch } from '../../utils/local-sports';
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const site = String(query.site || '-Qw82foL4XnLt_vBp8LVXjwW');
   const segment = String(query.segment || 'live');
+  const refresh = query.refresh === 'true' || query.refresh === '1';
   const ts = Date.now();
 
   setResponseHeaders(event, {
@@ -11,6 +12,24 @@ export default defineEventHandler(async (event) => {
     'Pragma': 'no-cache',
     'Expires': '0'
   });
+
+  try {
+    const sportsData = await fetchLocalSportsData(refresh);
+    if (sportsData.livestreams && sportsData.livestreams.length > 0) {
+      return {
+        code: 0,
+        data: {
+          timezone: 'Asia/Manila',
+          generatedAt: new Date().toISOString(),
+          segment,
+          count: sportsData.livestreams.length,
+          results: sportsData.livestreams
+        }
+      };
+    }
+  } catch (err: any) {
+    console.warn('[live88/livestream] Local sports data warning:', err?.message);
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -20,7 +39,7 @@ export default defineEventHandler(async (event) => {
     const res = await fetch(targetUrl, {
       cache: 'no-store',
       headers: {
-        'User-Agent': 'TipOffPh/2.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'application/json',
         'Cache-Control': 'no-cache',
         'Origin': 'https://live88.eu.cc',
@@ -31,23 +50,33 @@ export default defineEventHandler(async (event) => {
     clearTimeout(timeoutId);
 
     if (res.ok) {
-      return await res.json();
+      const json = await res.json();
+      const rawResults = Array.isArray(json?.data?.results)
+        ? json.data.results
+        : Array.isArray(json?.data)
+        ? json.data
+        : [];
+      const bballStreams = rawResults
+        .filter(isLive88BasketballMatch)
+        .map((item: any) => ({
+          ...item,
+          sport: item.sport === 'football' ? 'basketball' : item.sport
+        }));
+      return {
+        code: 0,
+        data: {
+          timezone: 'Asia/Manila',
+          generatedAt: new Date().toISOString(),
+          segment,
+          count: bballStreams.length,
+          results: bballStreams
+        }
+      };
     }
   } catch (err: any) {
     clearTimeout(timeoutId);
     console.warn('[live88/livestream] Upstream fetch warning:', err?.message);
   }
 
-  try {
-    const fallbackData = await fetchLocalSportsData(false);
-    return {
-      code: 0,
-      data: {
-        count: fallbackData.livestreams.length,
-        results: fallbackData.livestreams
-      }
-    };
-  } catch {
-    return { code: 200, data: { count: 0, results: [] } };
-  }
+  return { code: 200, data: { count: 0, results: [] } };
 });
