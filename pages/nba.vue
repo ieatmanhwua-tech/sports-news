@@ -46,14 +46,14 @@ useSeoMeta({
                 Official NBA Desk
               </span>
               <span class="px-2.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[11px] font-bold">
-                Preseason Fight Tomorrow • 5 Prediction Blogs
+                Oct 14–17, 2026 PHT • Matchup Blogs &amp; Final Recaps
               </span>
             </div>
             <h1 class="text-2xl sm:text-4xl font-black text-white tracking-tight">
               National Basketball Association (NBA)
             </h1>
             <p class="text-slate-300 text-sm sm:text-base max-w-2xl">
-              Complete NBA coverage tailored for Filipino basketball fans: tomorrow’s 5-game preseason fight prediction blogs with real team photography, live streams, Vegas odds, and game recaps.
+              Complete NBA coverage tailored for Filipino basketball fans: verified PHT game dates, 5-game preseason showcase blogs with real team photography, live streams, Vegas odds, and official box score recaps.
             </p>
           </div>
         </div>

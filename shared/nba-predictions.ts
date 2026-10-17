@@ -67,9 +67,9 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
     articleSlug: 'nba-preseason-prediction-hornets-vs-celtics-tatum-lamelo-showdown',
     matchupBadge: 'Preseason Fight #1 • Eastern Conference Clash',
     blogTitle: 'Charlotte Hornets vs. Boston Celtics Prediction: Can LaMelo Ball Slow Down Boston’s Five-Out Perimeter Machine?',
-    shortBlogLead: 'Defending champions Boston Celtics host LaMelo Ball and the fast-breaking Charlotte Hornets at TD Garden in tomorrow’s opening preseason showcase.',
+    shortBlogLead: 'Defending champions Boston Celtics host LaMelo Ball and the fast-breaking Charlotte Hornets at TD Garden in an Eastern Conference preseason showcase (Oct 15, 2026 PHT).',
     shortBlogParagraphs: [
-      'Boston enters tomorrow’s TD Garden dress rehearsal operating at mid-season offensive efficiency. Jayson Tatum and Jaylen Brown are slated for 26–28 minutes through the first three quarters, while newly extended sixth man Payton Pritchard continues to torch second units from deep.',
+      'Boston enters the TD Garden dress rehearsal operating at mid-season offensive efficiency. Jayson Tatum and Jaylen Brown are slated for 26–28 minutes through the first three quarters, while newly extended sixth man Payton Pritchard continues to torch second units from deep.',
       'Charlotte counters with electric transition pace led by LaMelo Ball and sophomore sharpshooter Brandon Miller. With Hornets guard Coby White resting his calf, head coach Charles Lee will lean heavily on Ball’s high-screen creation and Miles Bridges attacking closeouts.',
       'Prediction Verdict: Charlotte’s young core will trade early triples and keep the first half competitive, but Boston’s elite switching defense and second-unit three-point volume at TD Garden make the Celtics (-6.5) the sharp side.'
     ],
@@ -78,8 +78,8 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'LaMelo Ball has posted 21.5 PPG and 7.8 APG per 28 minutes across Charlotte’s exhibition slate.',
       'Payton Pritchard leads Boston’s bench with a +18.4 net rating in fourth-quarter stretches.'
     ],
-    tipOffPht: 'Today • Final (BOS 114–93 CHA)',
-    tipOffUs: `${_manilaDate.shortLabel} • Final`,
+    tipOffPht: 'Oct 15, 2026 PHT • Final (BOS 114–93 CHA)',
+    tipOffUs: 'Oct 14, 2026 EDT • Final',
     venue: 'TD Garden, Boston, MA',
     broadcast: 'NBA League Pass / NBA TV Philippines',
     spreadLine: 'BOS -6.5 (Covered)',
@@ -140,17 +140,17 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
     blogTitle: 'Phoenix Suns vs. San Antonio Spurs Prediction: Victor Wembanyama Tests Phoenix’s Spacing in Texas Showdown',
     shortBlogLead: 'Victor Wembanyama and the San Antonio Spurs square off against Devin Booker and the Phoenix Suns in a high-octane Western Conference measuring stick.',
     shortBlogParagraphs: [
-      'Few matchups generate more highlight-reel electricity than Phoenix’s perimeter shot-makers squaring off against 7-foot-4 phenomenon Victor Wembanyama. San Antonio enters tomorrow night riding strong home momentum after dominating the paint in their previous exhibition.',
+      'Few matchups generate more highlight-reel electricity than Phoenix’s perimeter shot-makers squaring off against 7-foot-4 phenomenon Victor Wembanyama. San Antonio enters this Frost Bank Center clash riding strong home momentum after dominating the paint in their previous exhibition.',
       'Phoenix head coach Mike Budenholzer has completely modernized the Suns’ shot profile, pushing Devin Booker and Kevin Durant to hunt early-clock pull-up threes while testing rookie rim-runners in the second half.',
-      'Prediction Verdict: With San Antonio treating tomorrow’s home showcase as a near-regular-season rotation test and Wembanyama erasing interior driving lanes, the Spurs hold the frontcourt edge while Phoenix keeps the margin inside double digits.'
+      'Prediction Verdict: With San Antonio treating this home showcase as a near-regular-season rotation test and Wembanyama erasing interior driving lanes, the Spurs hold the frontcourt edge while Phoenix keeps the margin inside double digits.'
     ],
     tacticalKeys: [
       'Victor Wembanyama is averaging 3.4 blocks and altering 9.2 rim attempts per 24 minutes this preseason.',
       'Phoenix has boosted its three-point attempt rate by +11.2% under Mike Budenholzer’s new system.',
       'San Antonio’s fastbreak points have surged behind De’Aaron Fox and Stephon Castle’s perimeter pressure.'
     ],
-    tipOffPht: 'Today • Final (SAS 123–103 PHX)',
-    tipOffUs: `${_manilaDate.shortLabel} • Final`,
+    tipOffPht: 'Oct 15, 2026 PHT • Final (SAS 123–103 PHX)',
+    tipOffUs: 'Oct 14, 2026 EDT • Final',
     venue: 'Frost Bank Center, San Antonio, TX',
     broadcast: 'NBA League Pass / One Sports+',
     spreadLine: 'SAS -6.5 (Covered)',
@@ -220,8 +220,8 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Zion Williamson is shooting 64.8% inside the restricted area during preseason action.',
       'Both teams rank in the top 6 in preseason pace, supporting the 231.5 Over.'
     ],
-    tipOffPht: 'Today • Final (NOP 101–97 DAL)',
-    tipOffUs: `${_manilaDate.shortLabel} • Final`,
+    tipOffPht: 'Oct 15, 2026 PHT • Final (NOP 101–97 DAL)',
+    tipOffUs: 'Oct 14, 2026 EDT • Final',
     venue: 'American Airlines Center, Dallas, TX',
     broadcast: 'NBA League Pass / Cignal Play',
     spreadLine: 'NOP +1.5 (Covered)',
@@ -291,8 +291,8 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Giannis Antetokounmpo averages 31.4 PPG per 36 minutes against Chicago over the past two seasons.',
       'Fiserv Forum preseason totals have gone Over in 4 of the last 5 divisional matchups.'
     ],
-    tipOffPht: 'Today • Final (CHI 125–104 MIL)',
-    tipOffUs: `${_manilaDate.shortLabel} • Final`,
+    tipOffPht: 'Oct 15, 2026 PHT • Final (CHI 125–104 MIL)',
+    tipOffUs: 'Oct 14, 2026 EDT • Final',
     venue: 'Fiserv Forum, Milwaukee, WI',
     broadcast: 'NBA League Pass / NBA TV Philippines',
     spreadLine: 'CHI -1.5 (Covered)',
@@ -351,19 +351,19 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
     articleSlug: 'nba-preseason-prediction-nuggets-vs-clippers-jokic-kawhi-harden-intuit-dome',
     matchupBadge: 'Preseason Fight #5 • Late-Night West Coast Finale',
     blogTitle: 'Denver Nuggets vs. LA Clippers Prediction: Nikola Jokić Tests Kawhi Leonard & James Harden at Intuit Dome',
-    shortBlogLead: 'Three-time MVP Nikola Jokić and the Denver Nuggets visit Inglewood’s Intuit Dome to battle Kawhi Leonard and James Harden in tomorrow’s late-window main event.',
+    shortBlogLead: 'Three-time MVP Nikola Jokić and the Denver Nuggets visit Inglewood’s Intuit Dome to battle Kawhi Leonard and James Harden in a West Coast preseason main event (Oct 15, 2026 PHT).',
     shortBlogParagraphs: [
       'Kawhi Leonard turned heads in his preseason debut by dropping 21 points in just 17 effortless minutes, signaling that the LA Clippers are healthy and locked in alongside playmaker James Harden and interior anchor Ivica Zubac.',
-      'Across the timeline, Nikola Jokić and Jamal Murray are treating tomorrow night’s road trip to Inglewood as their final extended tune-up before opening week. Denver’s two-man actions and backdoor cuts remain the gold standard of half-court execution.',
-      'Prediction Verdict: With Kawhi likely capped around 18–20 minutes and Denver giving Jokić, Murray, and Aaron Gordon a full three-quarter dress rehearsal, the Nuggets (-2.5) have the continuity and bench rebounding to cover on the road.'
+      'Across the timeline, Nikola Jokić and Jamal Murray are treating this road trip to Inglewood as their extended tune-up before opening week. Denver’s two-man actions and backdoor cuts remain the gold standard of half-court execution.',
+      'Prediction Verdict: With Kawhi capped on minutes and both teams testing deep rotations in the second half, expect high-scoring execution at Intuit Dome.'
     ],
     tacticalKeys: [
       'Kawhi Leonard scored 21 points in 17 minutes on 7-of-10 shooting in his preseason opener.',
       'Nikola Jokić has recorded a +16.2 on-court net rating with 9.4 assists per 30 minutes this October.',
       'Denver’s second unit has outscored opponents by +8.1 PPG behind Jonas Valančiūnas / Dario Šarić.'
     ],
-    tipOffPht: 'Today • Final (LAC 122–110 DEN)',
-    tipOffUs: `${_manilaDate.shortLabel} • Final`,
+    tipOffPht: 'Oct 15, 2026 PHT • Final (LAC 122–110 DEN)',
+    tipOffUs: 'Oct 14, 2026 EDT • Final',
     venue: 'Intuit Dome, Inglewood, CA',
     broadcast: 'NBA TV / Pilipinas Live / NBA League Pass',
     spreadLine: 'LAC +2.5 (Covered)',
@@ -436,8 +436,8 @@ export const NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE: NbaPredictionBlogItem[] 
       'Walker Kessler and Anthony Davis anchor a dominant Lakers interior defense.',
       'Warriors have won 4 consecutive preseason meetings against Los Angeles.'
     ],
-    tipOffPht: '10:00 AM PHT',
-    tipOffUs: '10:00 PM EDT',
+    tipOffPht: 'Oct 14, 2026 PHT • Final (LAL 95–93 GSW)',
+    tipOffUs: 'Oct 13, 2026 EDT • Final',
     venue: 'Crypto.com Arena, Los Angeles, CA',
     broadcast: 'NBA TV Philippines / One Sports',
     spreadLine: 'GSW -3.5',
@@ -507,8 +507,8 @@ export const NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE: NbaPredictionBlogItem[] 
       'Oklahoma City forces an NBA-best 18.4 turnovers per game in preseason play.',
       'Both teams rank top-3 in transition frequency and early-clock three-point volume.'
     ],
-    tipOffPht: '8:00 AM PHT',
-    tipOffUs: '8:00 PM EDT',
+    tipOffPht: 'Oct 14, 2026 PHT • Final (IND 97–89 OKC)',
+    tipOffUs: 'Oct 13, 2026 EDT • Final',
     venue: 'Paycom Center, Oklahoma City, OK',
     broadcast: 'NBA League Pass',
     spreadLine: 'OKC -5.5',
@@ -578,8 +578,8 @@ export const NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE: NbaPredictionBlogItem[] 
       'RJ Barrett and Immanuel Quickley combine for 38.5 PPG against their former franchise.',
       'Scotiabank Arena matchups between NYK and TOR have averaged 225.4 total points.'
     ],
-    tipOffPht: '7:00 AM PHT',
-    tipOffUs: '7:00 PM EDT',
+    tipOffPht: 'Oct 14, 2026 PHT • Final (TOR 106–86 NYK)',
+    tipOffUs: 'Oct 13, 2026 EDT • Final',
     venue: 'Scotiabank Arena, Toronto, ON',
     broadcast: 'NBA League Pass / TSN',
     spreadLine: 'NYK -2.5',
@@ -649,8 +649,8 @@ export const NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE: NbaPredictionBlogItem[] 
       'Orlando holds opponents to 42.1% shooting inside the arc at home.',
       'Both teams split their regular-season and playoff home-court meetings.'
     ],
-    tipOffPht: '7:00 AM PHT',
-    tipOffUs: '7:00 PM EDT',
+    tipOffPht: 'Oct 14, 2026 PHT • Final (CLE 108–103 ORL)',
+    tipOffUs: 'Oct 13, 2026 EDT • Final',
     venue: 'Kia Center, Orlando, FL',
     broadcast: 'NBA League Pass / FanDuel Sports Network',
     spreadLine: 'ORL -4.5',
@@ -720,8 +720,8 @@ export const NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE: NbaPredictionBlogItem[] 
       'Sacramento is thin at backup center following Maxime Raynaud’s knee injury.',
       'Donovan Clingan is averaging 2.8 blocks and 9.6 rebounds in 22 minutes per game.'
     ],
-    tipOffPht: '10:00 AM PHT',
-    tipOffUs: '10:00 PM EDT',
+    tipOffPht: 'Oct 14, 2026 PHT • Final (POR 97–86 SAC)',
+    tipOffUs: 'Oct 13, 2026 EDT • Final',
     venue: 'Golden 1 Center, Sacramento, CA',
     broadcast: 'NBA League Pass / NBC Sports California',
     spreadLine: 'POR +3.5',

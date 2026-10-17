@@ -1843,7 +1843,7 @@ const currentSeoMeta = computed(() => {
     };
   }
 
-  const tabConfig = SEO_TABS.find(t => t.id === selectedLeague.value) || SEO_TABS[0];
+  const tabConfig = (SEO_TABS.find(t => t.id === selectedLeague.value) || SEO_TABS[0])!;
   return {
     title: tabConfig.title,
     description: tabConfig.description,
@@ -1860,7 +1860,7 @@ const productionJsonLd = computed(() => {
     logo: `${PRODUCTION_DOMAIN}/img/TipOffPh_logo.png`
   };
 
-  const tabConfig = SEO_TABS.find(t => t.id === selectedLeague.value) || SEO_TABS[0];
+  const tabConfig = (SEO_TABS.find(t => t.id === selectedLeague.value) || SEO_TABS[0])!;
   const breadcrumbItems: any[] = [
     {
       '@type': 'ListItem',

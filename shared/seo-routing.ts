@@ -328,7 +328,7 @@ export function buildDualModeHref(
 ): string {
   const cleanSlug = String(slugOrTabId || '').toLowerCase().replace(/^\/+|\/+$/g, '');
   if (type === 'tab') {
-    const tabCfg = SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0];
+    const tabCfg = (SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0])!;
     return tabCfg.cleanPath;
   }
   if (type === 'watch') {
@@ -346,7 +346,7 @@ export function buildProductionCanonicalUrl(
 ): string {
   const cleanSlug = String(slugOrTabId || '').toLowerCase().replace(/^\/+|\/+$/g, '');
   if (type === 'tab') {
-    const tabCfg = SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0];
+    const tabCfg = (SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0])!;
     return `${PRODUCTION_DOMAIN}${tabCfg.cleanPath}`.toLowerCase();
   }
   if (type === 'watch') {
@@ -590,7 +590,7 @@ export function generateHighlightReportForMatch(
   const manilaTime = formatMatchDatePht(match);
 
   // Split total score into realistic 4 quarters
-  const splitQuarters = (total: number) => {
+  const splitQuarters = (total: number): [number, number, number, number] => {
     const q1 = Math.round(total * 0.24);
     const q2 = Math.round(total * 0.26);
     const q3 = Math.round(total * 0.25);
@@ -604,7 +604,7 @@ export function generateHighlightReportForMatch(
   const loseQ = displayHomeScore >= displayAwayScore ? awayQ : homeQ;
 
   // Determine the decisive quarter where the winner outscored the loser by the most points
-  const qDiffs = [0, 1, 2, 3].map(i => ({ qNum: i + 1, diff: winQ[i] - loseQ[i], wPts: winQ[i], lPts: loseQ[i] }));
+  const qDiffs = ([0, 1, 2, 3] as const).map(i => ({ qNum: i + 1, diff: winQ[i] - loseQ[i], wPts: winQ[i], lPts: loseQ[i] }));
   qDiffs.sort((a, b) => b.diff - a.diff);
   const decisiveQ = qDiffs[0] || { qNum: 4, diff: margin, wPts: winQ[3], lPts: loseQ[3] };
   const decisiveQuarterLabel = `Q${decisiveQ.qNum}`;
@@ -651,8 +651,8 @@ export function generateHighlightReportForMatch(
   );
 
   // Short Punchy Recap (2 paragraphs summarizing the final score, winning margin, and decisive quarter)
-  const paragraphs = [
-    `${winner} defeated ${loser} ${winScore}–${loseScore} to claim a ${margin}-point victory in ${strictLeague} action at ${match.venue || (isNba ? 'Official NBA Arena' : 'Smart Araneta Coliseum')}. After a tightly contested opening half (${away} ${awayQ[0] + awayQ[1]} – ${home} ${homeQ[0] + homeQ[1]}), ${winner} broke the game open in the decisive ${decisiveQuarterLabel} (${winQ[decisiveQ.qNum - 1]}–${loseQ[decisiveQ.qNum - 1]}) behind relentless transition pressure and crisp half-court ball movement.`,
+  const paragraphs: [string, string] = [
+    `${winner} defeated ${loser} ${winScore}–${loseScore} to claim a ${margin}-point victory in ${strictLeague} action at ${match.venue || (isNba ? 'Official NBA Arena' : 'Smart Araneta Coliseum')}. After a tightly contested opening half (${away} ${awayQ[0] + awayQ[1]} – ${home} ${homeQ[0] + homeQ[1]}), ${winner} broke the game open in the decisive ${decisiveQuarterLabel} (${winQ[decisiveQ.qNum - 1] ?? winQ[3]}–${loseQ[decisiveQ.qNum - 1] ?? loseQ[3]}) behind relentless transition pressure and crisp half-court ball movement.`,
     `In the closing frame (${away} ${awayQ[3]} – ${home} ${homeQ[3]}), ${winner} protected their ${margin}-point cushion by dominating the defensive glass and knocking down high-leverage shots down the stretch. Review the top highlights and official Q1–Q4 box score breakdown below.`
   ];
 
@@ -691,7 +691,7 @@ export function generateHighlightReportForMatch(
     ],
     keyTakeaways: [
       `Final Score: ${winner} ${winScore}, ${loser} ${loseScore} (${margin}-point winning margin).`,
-      `Decisive Quarter (${decisiveQuarterLabel}): ${winner} outscored ${loser} ${winQ[decisiveQ.qNum - 1]}–${loseQ[decisiveQ.qNum - 1]}.`,
+      `Decisive Quarter (${decisiveQuarterLabel}): ${winner} outscored ${loser} ${winQ[decisiveQ.qNum - 1] ?? winQ[3]}–${loseQ[decisiveQ.qNum - 1] ?? loseQ[3]}.`,
       `Fourth Quarter Closing: ${away} ${awayQ[3]} – ${home} ${homeQ[3]} at ${match.venue || 'Official Arena'}.`
     ]
   };
@@ -770,19 +770,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Golden State Warriors'),
     homeLogo: resolveTeamLogoSync('Los Angeles Lakers'),
     bannerUrl: '/img/articles/nba-preseason-pred-gsw-lal.webp',
-    headline: 'Golden State Warriors vs Los Angeles Lakers Prediction, Odds & Picks (Today · 10:00 AM PHT)',
+    headline: `Golden State Warriors vs Los Angeles Lakers Prediction, Odds & Picks (${_manilaSnap.shortLabel} · 10:00 AM PHT)`,
     seoTitle: 'Warriors vs Lakers Prediction, Odds & Picks | TipOff PH',
     seoDescription: 'Golden State Warriors vs Los Angeles Lakers NBA prediction, Lakers -2.5 spread, O/U 228.5 total, and 56% win probability in PHT on TipOff PH.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/golden-state-warriors-vs-los-angeles-lakers-prediction-odds-picks/`,
     publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Today · 10:00 AM PHT',
-    manilaTime: 'Today · 10:00 AM PHT',
+    matchDatePHT: `${_manilaSnap.shortLabel} · 10:00 AM PHT`,
+    manilaTime: `${_manilaSnap.shortLabel} · 10:00 AM PHT`,
     awayScore: 112,
     homeScore: 115,
     status: 'scheduled',
     summaryLead: 'Stephen Curry and the Golden State Warriors visit LeBron James, Anthony Davis, and the Los Angeles Lakers in a primetime Western Conference showdown.',
     taleOfTheTape: {
-      tipOffTimePht: 'Today · 10:00 AM PHT',
+      tipOffTimePht: `${_manilaSnap.shortLabel} · 10:00 AM PHT`,
       projectedWinner: 'Los Angeles Lakers (112–115)',
       projectedScore: 'Golden State Warriors 112 – Los Angeles Lakers 115',
       winProbability: '56% (Los Angeles Lakers)',
@@ -828,19 +828,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Barangay Ginebra San Miguel'),
     homeLogo: resolveTeamLogoSync('San Miguel Beermen'),
     bannerUrl: '/img/articles/pba-ginebra-vs-nlex-araneta.jpg',
-    headline: 'Barangay Ginebra San Miguel vs San Miguel Beermen Prediction, Odds & Picks (Today · 7:30 PM PHT)',
+    headline: `Barangay Ginebra San Miguel vs San Miguel Beermen Prediction, Odds & Picks (${_manilaSnap.shortLabel} · 7:30 PM PHT)`,
     seoTitle: 'Ginebra vs San Miguel PBA Prediction & Odds | TipOff PH',
     seoDescription: 'Barangay Ginebra vs San Miguel Beermen PBA prediction, Ginebra -3.5 spread, O/U 196.5 total, and 59% win probability at Smart Araneta Coliseum.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/barangay-ginebra-san-miguel-vs-san-miguel-beermen-prediction-odds-picks/`,
     publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Today · 7:30 PM PHT',
-    manilaTime: 'Today · 7:30 PM PHT',
+    matchDatePHT: `${_manilaSnap.shortLabel} · 7:30 PM PHT`,
+    manilaTime: `${_manilaSnap.shortLabel} · 7:30 PM PHT`,
     awayScore: 101,
     homeScore: 97,
     status: 'scheduled',
     summaryLead: 'Barangay Ginebra San Miguel and San Miguel Beermen collide at Smart Araneta Coliseum in a high-stakes PBA primetime showdown.',
     taleOfTheTape: {
-      tipOffTimePht: 'Today · 7:30 PM PHT',
+      tipOffTimePht: `${_manilaSnap.shortLabel} · 7:30 PM PHT`,
       projectedWinner: 'Barangay Ginebra San Miguel (101–97)',
       projectedScore: 'Barangay Ginebra 101 – San Miguel Beermen 97',
       winProbability: '59% (Barangay Ginebra San Miguel)',
@@ -886,19 +886,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Denver Nuggets'),
     homeLogo: resolveTeamLogoSync('LA Clippers'),
     bannerUrl: '/img/articles/nba-preseason-pred-den-lac.webp',
-    headline: 'Denver Nuggets vs LA Clippers Prediction, Odds & Picks (Tomorrow · 10:30 AM PHT)',
+    headline: `Denver Nuggets vs LA Clippers Prediction, Odds & Picks (Oct 15, 2026 · 10:30 AM PHT)`,
     seoTitle: 'Denver Nuggets vs LA Clippers Prediction & Odds | TipOff PH',
     seoDescription: 'Denver Nuggets vs LA Clippers NBA prediction, Nuggets -4.5 spread, O/U 223.5 total, and 62% win probability in Philippine Time on TipOff PH.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/denver-nuggets-vs-la-clippers-prediction-odds-picks/`,
-    publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Tomorrow · 10:30 AM PHT',
-    manilaTime: 'Tomorrow · 10:30 AM PHT',
+    publishedAt: '2026-10-15T04:30:00.000Z',
+    matchDatePHT: 'Oct 15, 2026 · 10:30 AM PHT',
+    manilaTime: 'Oct 15, 2026 · 10:30 AM PHT',
     awayScore: 116,
     homeScore: 110,
     status: 'scheduled',
     summaryLead: 'Nikola Jokic and Jamal Murray lead the Denver Nuggets into Intuit Dome against James Harden and the LA Clippers.',
     taleOfTheTape: {
-      tipOffTimePht: 'Tomorrow · 10:30 AM PHT',
+      tipOffTimePht: 'Oct 15, 2026 · 10:30 AM PHT',
       projectedWinner: 'Denver Nuggets (116–110)',
       projectedScore: 'Denver Nuggets 116 – LA Clippers 110',
       winProbability: '62% (Denver Nuggets)',
@@ -944,19 +944,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Charlotte Hornets'),
     homeLogo: resolveTeamLogoSync('Boston Celtics'),
     bannerUrl: '/img/articles/nba-preseason-pred-cha-bos.webp',
-    headline: 'Boston Celtics Defeat Charlotte Hornets 119–104: Game Highlights & Short Recap',
+    headline: 'Boston Celtics Defeat Charlotte Hornets 119–104 (Oct 15, 2026): Game Highlights & Short Recap',
     seoTitle: 'Celtics Defeat Hornets 119-104 Box Score Recap | TipOff PH',
     seoDescription: 'Boston Celtics defeat Charlotte Hornets 119-104: NBA game highlights, short recap, top player stats, and Q1-Q4 box score table on TipOff PH.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/report/charlotte-hornets-vs-boston-celtics-highlights-box-score/`,
-    publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Final · TD Garden',
-    manilaTime: 'Final · PHT',
+    publishedAt: '2026-10-15T06:00:00.000Z',
+    matchDatePHT: 'Oct 15, 2026 PHT · TD Garden',
+    manilaTime: 'Oct 15, 2026 · Final PHT',
     awayScore: 104,
     homeScore: 119,
     status: 'finished',
     summaryLead: 'Jayson Tatum and Jaylen Brown powered a decisive third-quarter surge as the Boston Celtics defeated the Charlotte Hornets 119–104 at TD Garden.',
     taleOfTheTape: {
-      tipOffTimePht: 'Final · PHT',
+      tipOffTimePht: 'Oct 15, 2026 · Final PHT',
       projectedWinner: 'Boston Celtics (119–104)',
       projectedScore: 'Charlotte Hornets 104 – Boston Celtics 119',
       winProbability: '100% (Final)',
@@ -1003,19 +1003,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Meralco Bolts'),
     homeLogo: resolveTeamLogoSync('TNT Tropang Giga'),
     bannerUrl: '/img/articles/san-miguel-beermen-semifinals-phcup.webp',
-    headline: 'TNT Tropang Giga Defeat Meralco Bolts 98–91: Game Highlights & Short Recap',
+    headline: `TNT Tropang Giga Defeat Meralco Bolts 98–91 (${_manilaSnap.shortLabel}): Game Highlights & Short Recap`,
     seoTitle: 'TNT Defeat Meralco 98-91 PBA Box Score & Recap | TipOff PH',
     seoDescription: 'TNT Tropang Giga defeat Meralco Bolts 98-91: PBA game highlights, short recap, and quarter-by-quarter box score table on TipOff PH.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/report/meralco-bolts-vs-tnt-tropang-giga-highlights-box-score/`,
     publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Final · Araneta Coliseum',
-    manilaTime: 'Final · PHT',
+    matchDatePHT: `${_manilaSnap.shortLabel} · Araneta Coliseum`,
+    manilaTime: `${_manilaSnap.shortLabel} · Final PHT`,
     awayScore: 91,
     homeScore: 98,
     status: 'finished',
     summaryLead: 'Rondae Hollis-Jefferson and Calvin Oftana delivered clutch fourth-quarter baskets to lift TNT Tropang Giga past the Meralco Bolts, 98–91.',
     taleOfTheTape: {
-      tipOffTimePht: 'Final · PHT',
+      tipOffTimePht: `${_manilaSnap.shortLabel} · Final PHT`,
       projectedWinner: 'TNT Tropang Giga (98–91)',
       projectedScore: 'Meralco Bolts 91 – TNT Tropang Giga 98',
       winProbability: '100% (Final)',
@@ -1062,19 +1062,19 @@ export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
     awayLogo: resolveTeamLogoSync('Indiana Pacers'),
     homeLogo: resolveTeamLogoSync('Oklahoma City Thunder'),
     bannerUrl: '/img/articles/nba-preseason-pred-ind-okc.webp',
-    headline: 'Oklahoma City Thunder Defeat Indiana Pacers 118–111: Game Highlights & Short Recap',
+    headline: 'Oklahoma City Thunder Defeat Indiana Pacers 118–111 (Oct 14, 2026): Game Highlights & Short Recap',
     seoTitle: 'Thunder Defeat Pacers 118-111 Box Score Recap | TipOff PH',
     seoDescription: 'Oklahoma City Thunder defeat Indiana Pacers 118-111: NBA game highlights, Shai Gilgeous-Alexander stats, and Q1-Q4 box score on TipOff PH.',
     canonicalUrl: `${PRODUCTION_DOMAIN}/report/indiana-pacers-vs-oklahoma-city-thunder-highlights-box-score/`,
-    publishedAt: _manilaSnap.verifiedPublishIso,
-    matchDatePHT: 'Final · Paycom Center',
-    manilaTime: 'Final · PHT',
+    publishedAt: '2026-10-14T06:00:00.000Z',
+    matchDatePHT: 'Oct 14, 2026 PHT · Paycom Center',
+    manilaTime: 'Oct 14, 2026 · Final PHT',
     awayScore: 111,
     homeScore: 118,
     status: 'finished',
     summaryLead: 'Shai Gilgeous-Alexander and Chet Holmgren fueled a dominant second half as the Oklahoma City Thunder topped the Indiana Pacers 118–111.',
     taleOfTheTape: {
-      tipOffTimePht: 'Final · PHT',
+      tipOffTimePht: 'Oct 14, 2026 · Final PHT',
       projectedWinner: 'Oklahoma City Thunder (118–111)',
       projectedScore: 'Indiana Pacers 111 – Oklahoma City Thunder 118',
       winProbability: '100% (Final)',

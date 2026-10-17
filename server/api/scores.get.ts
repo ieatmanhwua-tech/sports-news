@@ -3,6 +3,7 @@ import type { GameScore } from '../../shared/types';
 import { fetchLocalSportsData } from '../utils/local-sports';
 import { getTeamLogo, classifyMatchLeague, isVerifiedNbaTeam, isVerifiedPbaTeam } from '../../shared/team-logos';
 import { getUniqueMatchImage } from '../../shared/image-resolver';
+import { formatGameDateLabelPht } from '../../shared/ph-date';
 
 function isForeignOrInvalidMatch(homeName: string, awayName: string, comp: string): boolean {
   const combined = `${homeName} ${awayName} ${comp}`;
@@ -68,14 +69,17 @@ export default defineEventHandler(async (event) => {
         else if (m.status === 'finished') mappedStatus = 'final';
         else mappedStatus = 'upcoming';
 
-        let statusDetail = m.manilaTimeFormatted || 'Scheduled';
+        const gameDateInfo = formatGameDateLabelPht(m.startTime || m.startTimeIso);
+        let statusDetail = m.manilaTimeFormatted || `${gameDateInfo.monthDay}, ${gameDateInfo.timePht}`;
         if (mappedStatus === 'live') {
           const cleanClock = String(m.clock || '').replace(/^LIVE\s*[-·•:]?\s*/i, '').trim();
           statusDetail = cleanClock && cleanClock !== 'FT' && cleanClock !== 'LIVE'
             ? cleanClock
             : 'In Progress';
         } else if (mappedStatus === 'final') {
-          statusDetail = 'Final';
+          statusDetail = `Final · ${gameDateInfo.monthDay}`;
+        } else {
+          statusDetail = `${gameDateInfo.monthDay}, ${gameDateInfo.timePht}`;
         }
 
         const compText = m.competition || '';
@@ -131,18 +135,24 @@ export default defineEventHandler(async (event) => {
         };
       });
 
-      // Ensure the top of the board features the latest/live verified NBA game alongside live PBA games for Courtside Scores accuracy
-      if (!league || league === 'all') {
-        const topNbaIdx = games.findIndex(
-          g => g.leagueId === 'nba' && (g.status === 'live' || (g.status === 'final' && (g.homeScore || 0) > 0))
-        );
-        if (topNbaIdx > 0) {
-          const [topNbaGame] = games.splice(topNbaIdx, 1);
-          if (topNbaGame) {
-            games.unshift(topNbaGame);
-          }
-        }
-      }
+      // Sort games so 1) Live games come first, 2) Today's (Manila date) upcoming & final games come next, 3) Yesterday/Tomorrow games follow
+      games.sort((a, b) => {
+        const aLive = a.status === 'live' ? 1 : 0;
+        const bLive = b.status === 'live' ? 1 : 0;
+        if (aLive !== bLive) return bLive - aLive;
+
+        const dA = formatGameDateLabelPht(a.gameTimeUtc);
+        const dB = formatGameDateLabelPht(b.gameTimeUtc);
+        const aToday = dA.isToday ? 1 : 0;
+        const bToday = dB.isToday ? 1 : 0;
+        if (aToday !== bToday) return bToday - aToday;
+
+        const aNear = (dA.isTomorrow || dA.isYesterday) ? 1 : 0;
+        const bNear = (dB.isTomorrow || dB.isYesterday) ? 1 : 0;
+        if (aNear !== bNear) return bNear - aNear;
+
+        return 0;
+      });
     }
   } catch (err) {
     console.warn('Could not fetch Live88 matches in /api/scores:', err);

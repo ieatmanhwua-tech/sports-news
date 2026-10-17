@@ -1,21 +1,27 @@
 /**
  * Philippine Standard Time (Asia/Manila, UTC+8) Date Verification & Formatting Utility
  * Ensures all generated match blogs, NBA/PBA predictions, recaps, and Admin CMS posts
- * always use the verified current Manila date (e.g. October 17, 2026) and advance automatically.
+ * always use the accurate game date in Asia/Manila (PHT) and verify current Manila date.
  */
 
 const manilaPartsFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
   year: 'numeric',
   month: '2-digit',
-  day: '2-digit',
-  monthShort: undefined
-} as Intl.DateTimeFormatOptions);
+  day: '2-digit'
+});
 
 const manilaShortMonthFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
   month: 'short',
   day: 'numeric'
+});
+
+const manilaShortDateYearFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric'
 });
 
 const manilaFullMonthFormatter = new Intl.DateTimeFormat('en-US', {
@@ -28,7 +34,14 @@ const manilaFullMonthFormatter = new Intl.DateTimeFormat('en-US', {
 const manilaMonthOnlyFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
   month: 'long',
-   day: 'numeric'
+  day: 'numeric'
+});
+
+const manilaTimeOnlyFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
 });
 
 export interface ManilaDateSnapshot {
@@ -49,6 +62,20 @@ export interface ManilaDateSnapshot {
   startOfManilaDayUtcMs: number;
   verifiedPublishAnchorMs: number;
   verifiedPublishIso: string;
+}
+
+export interface AccurateGameDatePht {
+  ymd: string; // e.g. '2026-10-17'
+  monthDay: string; // e.g. 'Oct 17'
+  shortDate: string; // e.g. 'Oct 17, 2026'
+  fullDate: string; // e.g. 'October 17, 2026'
+  timePht: string; // e.g. '7:30 PM PHT'
+  shortDateTimePht: string; // e.g. 'Oct 17, 2026 · 7:30 PM PHT'
+  isToday: boolean;
+  isYesterday: boolean;
+  isTomorrow: boolean;
+  isFuture: boolean;
+  isPast: boolean;
 }
 
 function extractYmd(d: Date): { year: string; month: string; day: string; ymd: string; ymdCompact: string } {
@@ -112,8 +139,83 @@ export function getCurrentManilaDateParts(now: Date = new Date()): ManilaDateSna
 }
 
 /**
+ * Formats any game's startTime / gameTimeUtc into its exact, accurate Philippine Time (Asia/Manila) date and time.
+ */
+export function formatGameDateLabelPht(isoOrDate?: string): AccurateGameDatePht {
+  const snap = getCurrentManilaDateParts();
+  const parsedMs = isoOrDate ? Date.parse(isoOrDate) : NaN;
+  const targetDate = !Number.isNaN(parsedMs) ? new Date(parsedMs) : new Date();
+  const extracted = extractYmd(targetDate);
+
+  const monthDay = manilaShortMonthFormatter.format(targetDate);
+  const shortDate = manilaShortDateYearFormatter.format(targetDate);
+  const fullDate = manilaFullMonthFormatter.format(targetDate);
+  const timePht = `${manilaTimeOnlyFormatter.format(targetDate)} PHT`;
+  const shortDateTimePht = `${shortDate} · ${timePht}`;
+
+  const isToday = extracted.ymd === snap.ymd;
+  const isYesterday = extracted.ymd === snap.yesterdayYmd;
+  const isTomorrow = extracted.ymd === snap.tomorrowYmd;
+  const isFuture = extracted.ymd > snap.ymd;
+  const isPast = extracted.ymd < snap.ymd;
+
+  return {
+    ymd: extracted.ymd,
+    monthDay,
+    shortDate,
+    fullDate,
+    timePht,
+    shortDateTimePht,
+    isToday,
+    isYesterday,
+    isTomorrow,
+    isFuture,
+    isPast
+  };
+}
+
+/**
+ * Computes an accurate publishedAt timestamp for a match blog based on the actual game date and status.
+ * - Live games: stamped today in PHT.
+ * - Finished games: stamped on the actual game day (~2.5 hours after tip-off, capped at now) so Oct 14/15/16/17 games carry their true game date.
+ * - Scheduled games: preview published today in PHT (with the exact scheduled game date displayed in the title and body).
+ */
+export function computeAccurateMatchBlogPublishIso(
+  startIso?: string,
+  status?: string,
+  index = 0
+): string {
+  const snap = getCurrentManilaDateParts();
+  const nowMs = Date.now();
+  const parsedStartMs = startIso ? Date.parse(startIso) : NaN;
+  const normStatus = String(status || 'scheduled').toLowerCase();
+
+  if (normStatus === 'live') {
+    return new Date(Math.min(nowMs - index * 30 * 1000, snap.verifiedPublishAnchorMs - index * 30 * 1000)).toISOString();
+  }
+
+  if ((normStatus === 'finished' || normStatus === 'final') && !Number.isNaN(parsedStartMs)) {
+    const gameDate = extractYmd(new Date(parsedStartMs));
+    if (gameDate.ymd === snap.ymd) {
+      // Finished today in Manila time
+      const postGameMs = Math.min(nowMs - (index + 1) * 60 * 1000, parsedStartMs + 2.5 * 3600 * 1000);
+      return new Date(Math.max(snap.startOfManilaDayUtcMs + 60 * 1000, postGameMs)).toISOString();
+    }
+    // Finished on an earlier date (e.g. Oct 16, Oct 15, Oct 14): stamp accurately on that game's completion time
+    const historicalPostGameMs = Math.min(nowMs - 60 * 1000, parsedStartMs + 2.5 * 3600 * 1000);
+    return new Date(historicalPostGameMs).toISOString();
+  }
+
+  // Scheduled / upcoming game preview: if scheduled for today, publish earlier today; if scheduled for tomorrow+, publish slightly earlier today
+  const offsetMinutes = (!Number.isNaN(parsedStartMs) && extractYmd(new Date(parsedStartMs)).ymd === snap.ymd)
+    ? 10 + index * 2
+    : 35 + index * 2;
+  return new Date(snap.verifiedPublishAnchorMs - offsetMinutes * 60 * 1000).toISOString();
+}
+
+/**
  * Ensures an article's publishedAt timestamp is valid and up-to-date in Philippine Time (Asia/Manila)
- * when publishing a new post or syncing daily blogs.
+ * when publishing a new post from the Admin CMS.
  */
 export function ensureFreshManilaPublishIso(rawIso?: string, forceTodayIfOlderThanDays = 1): string {
   const snap = getCurrentManilaDateParts();

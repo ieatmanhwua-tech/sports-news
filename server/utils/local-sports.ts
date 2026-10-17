@@ -457,13 +457,15 @@ export function normalizeMatchClassification(
       ? 'finished'
       : 'scheduled';
 
-  // Prevent stale historical kadario PBA/NBA records (e.g. from Oct 7-14 or with clock === 'FT') from staying stuck as 'live'
+  // Prevent stale historical kadario PBA/NBA records (e.g. from Oct 3-14 or with clock === 'FT') from staying stuck as 'live' or 'scheduled'
   if (normalizedStatus === 'live') {
     if (rawClock.toUpperCase() === 'FT' && !isInAuthoritativeLive) {
       normalizedStatus = 'finished';
     } else if (ageHours > 3.5 && !isInAuthoritativeLive) {
       normalizedStatus = 'finished';
     }
+  } else if (normalizedStatus === 'scheduled' && ageHours > 3.5 && !isInAuthoritativeLive) {
+    normalizedStatus = 'finished';
   } else if (isInAuthoritativeLive) {
     normalizedStatus = 'live';
   }
@@ -535,7 +537,7 @@ export function normalizeMatchClassification(
     streamLabel: m.streamLabel || competition || classified.defaultBroadcast,
     hasStream: validSources.length > 0 || Boolean(m.hasStream),
     sources: validSources,
-    manilaTimeFormatted: formatManilaTime(m.startTime, normalizedStatus, clock),
+    manilaTimeFormatted: formatManilaTime(m.startTime || m.startTimeIso || '', normalizedStatus, clock),
     home: {
       ...m.home,
       id: m.home?.id || homeName.toLowerCase().replace(/\s+/g, '-'),
@@ -1202,7 +1204,7 @@ async function executeSportsRefresh(
           awayScore,
           hasStream: Boolean(mergedSources && mergedSources.length > 0) || Boolean(prev.hasStream) || Boolean(incoming.hasStream),
           sources: mergedSources,
-          manilaTimeFormatted: formatManilaTime(incoming.startTime || prev.startTime, status, clock)
+          manilaTimeFormatted: formatManilaTime(incoming.startTime || prev.startTime || '', status, clock)
         },
         espnLiveGames,
         authoritativeLiveIds
@@ -1357,10 +1359,9 @@ async function executeSportsRefresh(
       .sort((a, b) => {
         const tA = new Date(a.startTime || 0).getTime();
         const tB = new Date(b.startTime || 0).getTime();
-        const recentCutoff4d = Date.now() - 4 * 24 * 3600 * 1000;
-        const aRecent = tA >= recentCutoff4d ? 1 : 0;
-        const bRecent = tB >= recentCutoff4d ? 1 : 0;
-        if (aRecent !== bRecent) return bRecent - aRecent;
+        const ymdA = !Number.isNaN(tA) ? manilaYmdFormatter.format(new Date(tA)) : '9999-12-31';
+        const ymdB = !Number.isNaN(tB) ? manilaYmdFormatter.format(new Date(tB)) : '9999-12-31';
+        if (ymdA !== ymdB) return ymdA.localeCompare(ymdB);
         const lpA = getLeaguePriority(a);
         const lpB = getLeaguePriority(b);
         if (lpA !== lpB) return lpA - lpB;
@@ -1368,7 +1369,7 @@ async function executeSportsRefresh(
       })
       .slice(0, 60);
 
-    // 3. Finished (Recent Results) matches
+    // 3. Finished (Recent Results) matches — sorted by Manila game date descending first so Today's & Yesterday's finals lead
     const recentMatches = allMerged
       .filter(m => m.status === 'finished')
       .map(m => {
@@ -1382,10 +1383,9 @@ async function executeSportsRefresh(
       .sort((a, b) => {
         const tA = new Date(a.startTime || 0).getTime();
         const tB = new Date(b.startTime || 0).getTime();
-        const recentCutoff7d = Date.now() - 7 * 24 * 3600 * 1000;
-        const aRecent = tA >= recentCutoff7d ? 1 : 0;
-        const bRecent = tB >= recentCutoff7d ? 1 : 0;
-        if (aRecent !== bRecent) return bRecent - aRecent;
+        const ymdA = !Number.isNaN(tA) ? manilaYmdFormatter.format(new Date(tA)) : '0000-00-00';
+        const ymdB = !Number.isNaN(tB) ? manilaYmdFormatter.format(new Date(tB)) : '0000-00-00';
+        if (ymdA !== ymdB) return ymdB.localeCompare(ymdA);
         const lpA = getLeaguePriority(a);
         const lpB = getLeaguePriority(b);
         if (lpA !== lpB) return lpA - lpB;

@@ -66,7 +66,7 @@ function scrollToCard(id: string) {
           <div class="flex flex-wrap items-center gap-2.5">
             <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-500 text-slate-950 text-xs font-black uppercase tracking-wider shadow-sm">
               <Flame class="w-3.5 h-3.5 fill-slate-950" />
-              NBA Matches Today
+              {{ activeSlate === 'tomorrow' ? 'Oct 15, 2026 PHT Slate' : 'Oct 14, 2026 PHT Slate' }}
             </span>
             <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-500/15 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
               <Sparkles class="w-3.5 h-3.5 text-amber-400" />
@@ -79,10 +79,10 @@ function scrollToCard(id: string) {
           </div>
 
           <h2 class="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
-            NBA Matchup Blog &amp; Box Score Recaps: Today’s 5-Fight Showcase
+            NBA Matchup Blog &amp; Box Score Recaps ({{ activeSlate === 'tomorrow' ? 'Oct 15, 2026 PHT' : 'Oct 14, 2026 PHT' }} Showcase)
           </h2>
           <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
-            Updated matchup blog breakdowns and official box score recaps for today’s marquee NBA fights. Each of the 5 content designs features authentic in-game photography for both teams, official NBA team logos, star player head-to-head metrics, live Vegas spreads, and final scores.
+            Verified matchup blog breakdowns and official box score recaps for the {{ activeSlate === 'tomorrow' ? 'October 15, 2026 PHT' : 'October 14, 2026 PHT' }} NBA 5-game slate. Each of the 5 content designs features authentic in-game photography for both teams, official NBA team logos, star player head-to-head metrics, Vegas spreads, and final scores.
           </p>
         </div>
 
@@ -102,10 +102,10 @@ function scrollToCard(id: string) {
                 : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'"
             >
               <div>
-                <div class="font-black">Today’s 5 NBA Match Blogs</div>
+                <div class="font-black">Oct 15 PHT • 5 NBA Match Blogs</div>
                 <div class="text-[10px] opacity-80">CHA@BOS • PHX@SAS • NOP@DAL • CHI@MIL • DEN@LAC</div>
               </div>
-              <span class="px-2 py-0.5 rounded bg-black/20 text-[10px] font-black">TODAY</span>
+              <span class="px-2 py-0.5 rounded bg-black/20 text-[10px] font-black">OCT 15</span>
             </button>
 
             <button
@@ -117,10 +117,10 @@ function scrollToCard(id: string) {
                 : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'"
             >
               <div>
-                <div class="font-black">5-Game Showcase Slate</div>
+                <div class="font-black">Oct 14 PHT • 5-Game Showcase</div>
                 <div class="text-[10px] opacity-80">GSW@LAL • IND@OKC • NYK@TOR • CLE@ORL • POR@SAC</div>
               </div>
-              <span class="px-2 py-0.5 rounded bg-black/20 text-[10px] font-black">5 GAMES</span>
+              <span class="px-2 py-0.5 rounded bg-black/20 text-[10px] font-black">OCT 14</span>
             </button>
           </div>
         </div>

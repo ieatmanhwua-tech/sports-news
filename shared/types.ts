@@ -1,4 +1,4 @@
-export type ContentType = 'news' | 'rumor' | 'editorial' | 'interview';
+export type ContentType = 'news' | 'rumor' | 'editorial' | 'interview' | 'analysis';
 
 export type ArticleStatus = 'draft' | 'published' | 'scheduled' | 'archived';
 

@@ -10,7 +10,11 @@ import {
   normalizeLive88ImageUrl
 } from '../../shared/image-resolver';
 import { inMemoryStore } from '../db/client';
-import { getCurrentManilaDateParts } from '../../shared/ph-date';
+import {
+  getCurrentManilaDateParts,
+  formatGameDateLabelPht,
+  computeAccurateMatchBlogPublishIso
+} from '../../shared/ph-date';
 
 let lastBlogSyncTime = 0;
 let lastBlogSyncYmd = '';
@@ -143,7 +147,8 @@ export function convertMatchToBlogArticle(
   const leagueName = classified.league;
   const competition = match.competition || classified.leagueFullName;
   const venue = match.venue || classified.defaultVenue;
-  const manilaTime = match.manilaTimeFormatted || 'Today (Manila Time PHT)';
+  const gameDate = formatGameDateLabelPht(match.startTime || match.startTimeIso);
+  const manilaTime = gameDate.shortDateTimePht;
   const meta = getCategoryAndAuthorForLeague(classified.leagueId);
   const { url: featuredImageUrl, isRealPhoto } = pickFeaturedImageForMatch(match, classified, usedImages);
   const slug = buildMatchBlogSlug(match);
@@ -158,12 +163,13 @@ export function convertMatchToBlogArticle(
     const leader = hScore >= aScore ? home : away;
     const trailer = hScore >= aScore ? away : home;
 
-    title = `LIVE BLOG: ${away} vs. ${home} (${scoreTag}, ${clockTag}) — ${leagueName} Real-Time Score & Tactical Updates`;
-    excerpt = `Follow live courtside updates as ${away} and ${home} battle in ${competition} action (${scoreTag}, ${clockTag}) at ${venue}. Real-time quarter breakdown, tempo metrics, and live in-play odds.`;
+    title = `LIVE BLOG (${gameDate.shortDate}): ${away} vs. ${home} (${scoreTag}, ${clockTag}) — ${leagueName} Real-Time Score & Updates`;
+    excerpt = `Follow live courtside updates on ${gameDate.fullDate} as ${away} and ${home} battle in ${competition} action (${scoreTag}, ${clockTag}) at ${venue}. Real-time quarter breakdown, tempo metrics, and live in-play odds.`;
     body = [
-      `MANILA / COURTSIDE LIVE DESK — Live ${competition} action is underway at ${venue} as **${away}** squares off against **${home}** (${scoreTag}, ${clockTag}). Follow our real-time match blog for possession-by-possession updates, rotation adjustments, and live box score tracking.`,
+      `MANILA / COURTSIDE LIVE DESK (${gameDate.fullDate}) — Live ${competition} action is underway at ${venue} as **${away}** squares off against **${home}** (${scoreTag}, ${clockTag}). Follow our real-time match blog for possession-by-possession updates, rotation adjustments, and live box score tracking.`,
       `### Live Matchup & Broadcast Telemetry`,
       `- **Matchup:** ${away} at ${home} (${competition})`,
+      `- **Game Date (PHT):** ${gameDate.fullDate} (${gameDate.timePht})`,
       `- **Live Status:** ${clockTag} • Current Score: **${away} ${aScore} – ${home} ${hScore}**`,
       `- **Arena:** ${venue}`,
       `- **Broadcast & Stream:** ${match.streamLabel || classified.defaultBroadcast} (Streaming live on TipOff PH)`,
@@ -193,43 +199,45 @@ export function convertMatchToBlogArticle(
     const q3L = Math.round(loseScore * 0.26);
     const q4L = Math.max(10, loseScore - (q1L + q2L + q3L));
 
-    title = `${winner} Defeat ${loser} ${winScore}–${loseScore}: ${leagueName} Full Box Score, Highlights & Post-Game Blog`;
-    excerpt = `${winner} powered past ${loser} ${winScore}–${loseScore} in ${competition} action at ${venue}. Read our complete post-game blog recap, quarter-by-quarter box score breakdown, and key takeaways.`;
+    title = `${winner} Defeat ${loser} ${winScore}–${loseScore} (${gameDate.shortDate}): ${leagueName} Full Box Score, Highlights & Recap`;
+    excerpt = `On ${gameDate.fullDate}, ${winner} powered past ${loser} ${winScore}–${loseScore} in ${competition} action at ${venue}. Read our complete post-game blog recap, quarter-by-quarter box score breakdown, and key takeaways.`;
     body = [
-      `MANILA / POST-GAME DESK — **${winner}** delivered a composed two-way performance to defeat **${loser}**, **${winScore}–${loseScore}**, in official ${competition} action at ${venue}.`,
+      `MANILA / POST-GAME DESK (${gameDate.fullDate}) — **${winner}** delivered a composed two-way performance to defeat **${loser}**, **${winScore}–${loseScore}**, in official ${competition} action at ${venue} (${manilaTime}).`,
       `### Official Final Score & Quarter Breakdown`,
+      `- **Game Date (PHT):** ${gameDate.fullDate} (${gameDate.timePht})`,
       `- **Final Score:** ${away} ${finalA} – ${home} ${finalH} (${winner} win by ${margin} pts)`,
       `- **${winner} Quarters:** Q1: ${q1W} | Q2: ${q2W} | Q3: ${q3W} | Q4: ${q4W} — **Total: ${winScore}**`,
       `- **${loser} Quarters:** Q1: ${q1L} | Q2: ${q2L} | Q3: ${q3L} | Q4: ${q4L} — **Total: ${loseScore}**`,
-      `- **Venue:** ${venue} (${manilaTime})`,
+      `- **Venue:** ${venue}`,
       `### How ${winner} Sealed the Victory`,
       `After trading early runs in a competitive opening half, ${winner} tightened their defensive rotations coming out of the locker room. By walling off the restricted area and forcing ${loser} into contested late-clock jumpers, ${winner} ignited a decisive second-half surge.`,
       `Down the stretch in the fourth quarter (${q4W}–${q4L}), ${winner} executed cleanly out of high ball-screen sets, converting crucial free throws and second-chance rebounds to put the game out of reach.`,
       `### Key Post-Game Takeaways`,
-      `- **Closing Execution:** ${winner} outscored ${loser} ${q4W}–${q4L} in the final frame to lock down the ${winScore}–${loseScore} victory.`,
+      `- **Closing Execution:** ${winner} outscored ${loser} ${q4W}–${q4L} in the final frame to lock down the ${winScore}–${loseScore} victory on ${gameDate.shortDate}.`,
       `- **Rebounding & Tempo:** Superior transition defense and half-court shot selection gave ${winner} the decisive edge.`
     ].join('\n\n');
   } else {
-    // Scheduled / Upcoming Match Today
+    // Scheduled / Upcoming Match
     const seed = (home + away).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
     const isNba = classified.leagueId === 'nba';
     const projHome = (isNba ? 112 : 94) + (seed % 9);
     const projAway = (isNba ? 108 : 89) + ((seed * 3) % 9 === seed % 9 ? ((seed * 3) % 9) + 2 : (seed * 3) % 9);
     const projWinner = projHome >= projAway ? home : away;
     const spreadVal = ((Math.abs(projHome - projAway) || 3) + 0.5).toFixed(1);
+    const whenPhrase = gameDate.isToday ? `today, ${gameDate.fullDate} (${gameDate.timePht})` : `on ${gameDate.fullDate} (${gameDate.timePht})`;
 
-    title = `${away} vs. ${home} ${leagueName} Preview & Prediction Blog Today (${manilaTime}): Odds, Lineups & Key Matchups`;
-    excerpt = `${away} faces ${home} today (${manilaTime}) in ${competition} action at ${venue}. Read our complete pre-game blog preview, tactical keys, point spread analysis, and score projection.`;
+    title = `${away} vs. ${home} ${leagueName} Preview & Prediction Blog (${gameDate.shortDate} · ${gameDate.timePht}): Odds & Lineups`;
+    excerpt = `${away} faces ${home} ${whenPhrase} in ${competition} action at ${venue}. Read our complete pre-game blog preview, tactical keys, point spread analysis, and score projection.`;
     body = [
-      `MANILA / MATCH PREVIEW DESK — High-stakes ${competition} basketball tips off at ${venue} as **${away}** goes head-to-head against **${home}** (${manilaTime}). Here is our complete pre-game blog breakdown, tactical preview, and projected final score.`,
+      `MANILA / MATCH PREVIEW DESK (${gameDate.fullDate}) — High-stakes ${competition} basketball tips off at ${venue} as **${away}** goes head-to-head against **${home}** ${whenPhrase}. Here is our complete pre-game blog breakdown, tactical preview, and projected final score.`,
       `### Matchup & PHT Schedule Guide`,
       `- **Fixture:** ${away} at ${home} (${competition})`,
-      `- **Tip-Off Time (PHT):** ${manilaTime}`,
+      `- **Scheduled Date & Tip-Off (PHT):** ${gameDate.fullDate} · ${gameDate.timePht}`,
       `- **Arena:** ${venue}`,
       `- **Broadcast & Live Stream:** ${match.streamLabel || classified.defaultBroadcast}`,
       `- **Consensus Line:** ${projWinner} -${spreadVal} | Projected Score: **${away} ${projAway} – ${home} ${projHome}**`,
       `### Tactical Preview & Keys to the Game`,
-      `**${home}** enters today's contest looking to establish early interior paint touches and control the defensive glass, while **${away}** will aim to push the transition pace and hunt early three-point opportunities before the half-court defense can set.`,
+      `**${home}** enters this ${gameDate.shortDate} contest looking to establish early interior paint touches and control the defensive glass, while **${away}** will aim to push the transition pace and hunt early three-point opportunities before the half-court defense can set.`,
       `Bench depth and foul trouble in the third quarter will play a pivotal role. Whichever backcourt limits live-ball turnovers and wins the points-off-turnovers battle will hold the inside track in the closing five minutes.`,
       `### Official TipOff PH Prediction`,
       `- **Projected Winner:** **${projWinner}** (${away} ${projAway} – ${home} ${projHome})`,
@@ -237,13 +245,12 @@ export function convertMatchToBlogArticle(
     ].join('\n\n');
   }
 
-  // Deterministic publish timestamp anchored to the current Manila date (e.g. Oct 17, 2026) so today's blogs are always up-to-date
-  const snap = getCurrentManilaDateParts();
-  const photoBaseMs = snap.verifiedPublishAnchorMs;
-  const graphicBaseMs = snap.startOfManilaDayUtcMs - 3 * 24 * 3600 * 1000;
-  const baseMs = isRealPhoto ? photoBaseMs : graphicBaseMs;
-  const publishedMs = baseMs - index * 4 * 60 * 1000;
-  const publishedIso = new Date(publishedMs).toISOString();
+  // Accurate publish timestamp matching the game's actual Manila date and status
+  const publishedIso = computeAccurateMatchBlogPublishIso(
+    match.startTime || match.startTimeIso,
+    match.status,
+    index
+  );
 
   return {
     id: `art-match-today-${slug}`,
@@ -258,12 +265,12 @@ export function convertMatchToBlogArticle(
     sourceName: meta.sourceName,
     sourceUrl: meta.sourceUrl,
     featuredImageUrl,
-    imageAlt: `${away} vs ${home} — ${competition} Match Blog`,
+    imageAlt: `${away} vs ${home} (${gameDate.shortDate}) — ${competition} Match Blog`,
     imageCredit: `TipOff PH / ${leagueName} Official Coverage`,
-    seoTitle: title.length > 65 ? `${away} vs ${home} ${leagueName} Blog & Box Score | TipOff PH` : title,
+    seoTitle: title.length > 65 ? `${away} vs ${home} (${gameDate.monthDay}) ${leagueName} Blog | TipOff PH` : title,
     seoDescription: excerpt.length > 160 ? `${excerpt.slice(0, 157)}...` : excerpt,
-    isFeatured: isRealPhoto && index < 6,
-    isBreaking: isRealPhoto && (index === 0 || match.status === 'live'),
+    isFeatured: isRealPhoto && gameDate.isToday && index < 6,
+    isBreaking: isRealPhoto && (match.status === 'live' || (gameDate.isToday && index === 0)),
     status: 'published',
     publishedAt: publishedIso,
     updatedAt: publishedIso,
@@ -292,20 +299,14 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
       return false;
     });
 
-    // Sort: 1. Live matches, 2. Today/Recent Manila date matches (PBA, NBA, MPBL, NCAA, UAAP), 3. Other matches
+    // Sort: 1. Live matches, 2. Today's Manila date matches, 3. Yesterday/Tomorrow Manila date matches, 4. Other matches
     const snap = getCurrentManilaDateParts();
     const sortedMatches = [...validMatches].sort((a, b) => {
       const rankStatus = (m: PhSportsMatch) => {
         if (m.status === 'live') return 0;
-        const startStr = String(m.startTime || '');
-        if (
-          startStr.startsWith(snap.ymd) ||
-          startStr.startsWith(snap.tomorrowYmd) ||
-          startStr.startsWith(snap.yesterdayYmd)
-        ) {
-          return 1;
-        }
-        if (startStr.startsWith(snap.twoDaysAgoYmd)) return 2;
+        const d = formatGameDateLabelPht(m.startTime || m.startTimeIso);
+        if (d.isToday) return 1;
+        if (d.isYesterday || d.isTomorrow) return 2;
         return 3;
       };
       const rA = rankStatus(a);

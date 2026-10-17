@@ -26,6 +26,11 @@ export interface UniqueMatchImageInput {
   actionThumbnail?: string;
   espnThumbnail?: string;
   startTime?: string;
+  awayScore?: number;
+  homeScore?: number;
+  clockOrTime?: string;
+  venue?: string;
+  isLive?: boolean;
 }
 
 function loadStorageMap(key: string, target: Map<string, string>) {
@@ -175,7 +180,7 @@ export function getSvgMatchupBanner(awayTeam: string, homeTeam: string, league =
     ['#2b1d16', '#170f0b', '#3f2a1f'],
     ['#382210', '#211308', '#4f3117']
   ];
-  const [woodMid, woodDark, woodLight] = courtTones[styleVariant];
+  const [woodMid, woodDark, woodLight] = (courtTones[styleVariant] || courtTones[0])!;
   const beamAngle = 15 + (seed % 20);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
@@ -305,7 +310,7 @@ export function getSvgBlogArticleCover(params: {
     ['#422a17', '#29180b'],
     ['#2e1c11', '#180e08']
   ];
-  const [courtLight, courtDark] = woodShades[layoutVariant];
+  const [courtLight, courtDark] = (woodShades[layoutVariant] || woodShades[0])!;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
     <defs>

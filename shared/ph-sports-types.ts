@@ -1,8 +1,8 @@
 export interface PhSportsTeam {
-  id: string;
+  id?: string;
   name: string;
   shortName: string;
-  initials: string;
+  initials?: string;
   accent?: string;
   logo?: string;
 }
@@ -25,7 +25,7 @@ export interface PhSportsProbability {
 }
 
 export interface PhSportsStreamSource {
-  id: string;
+  id?: string;
   label: string;
   type: string;
   url: string;
@@ -40,7 +40,7 @@ export interface PhSportsMatch {
   clock: string;
   homeScore: number;
   awayScore: number;
-  startTime: string;
+  startTime?: string;
   venue?: string;
   streamLabel?: string;
   competition?: string;
@@ -63,6 +63,8 @@ export interface PhSportsMatch {
   topPlayerName?: string;
   topPlayerStat?: string;
   topPlayerHeadshot?: string;
+  quarterScores?: any;
+  topPerformers?: any;
 }
 
 export interface PhSportsSignal {

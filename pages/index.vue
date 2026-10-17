@@ -11,6 +11,7 @@ import { NBA_PRESEASON_PREDICTIONS_TOMORROW } from '~/shared/nba-predictions';
 import { slugifyTeam } from '~/shared/seo-routing';
 import { getTeamLogo } from '~/shared/team-logos';
 import { getUniqueMatchImage, handleImageError } from '~/shared/image-resolver';
+import { formatGameDateLabelPht } from '~/shared/ph-date';
 import { ArrowRight, Flame, Trophy, Globe, GraduationCap, ShieldAlert } from 'lucide-vue-next';
 
 const todayBlogLeagueFilter = ref<'all' | 'nba' | 'pba' | 'mpbl' | 'collegiate'>('all');
@@ -96,27 +97,29 @@ function getResponsiveArticleSrcset(src?: string): string | undefined {
 }
 
 function getMatchBlogHeadline(game: GameScore): string {
+  const d = formatGameDateLabelPht(game.gameTimeUtc);
   if (game.status === 'live') {
-    return `LIVE BLOG: ${game.awayTeam} vs. ${game.homeTeam} (${game.awayScore ?? 0}–${game.homeScore ?? 0}, ${game.statusDetail})`;
+    return `LIVE BLOG (${d.shortDate}): ${game.awayTeam} vs. ${game.homeTeam} (${game.awayScore ?? 0}–${game.homeScore ?? 0}, ${game.statusDetail})`;
   }
   if (game.status === 'final') {
     const h = game.homeScore ?? 0;
     const a = game.awayScore ?? 0;
     const winner = h >= a ? game.homeTeam : game.awayTeam;
     const loser = h >= a ? game.awayTeam : game.homeTeam;
-    return `${winner} Defeat ${loser} ${Math.max(h, a)}–${Math.min(h, a)}: ${game.league} Box Score & Recap`;
+    return `${winner} Defeat ${loser} ${Math.max(h, a)}–${Math.min(h, a)} (${d.shortDate}): ${game.league} Box Score & Recap`;
   }
-  return `${game.awayTeam} vs. ${game.homeTeam} ${game.league} Preview & Prediction Today (${game.statusDetail})`;
+  return `${game.awayTeam} vs. ${game.homeTeam} ${game.league} Preview & Prediction (${d.shortDate} · ${d.timePht})`;
 }
 
 function getMatchBlogExcerpt(game: GameScore): string {
+  const d = formatGameDateLabelPht(game.gameTimeUtc);
   if (game.status === 'live') {
-    return `Follow live courtside updates, quarter-by-quarter scoring, and in-play tactical analysis as ${game.awayTeam} battles ${game.homeTeam} at ${game.venue}.`;
+    return `Follow live courtside updates on ${d.fullDate}, quarter-by-quarter scoring, and in-play tactical analysis as ${game.awayTeam} battles ${game.homeTeam} at ${game.venue}.`;
   }
   if (game.status === 'final') {
-    return `Full post-game box score recap, quarter breakdown, and top player highlights from ${game.awayTeam} vs. ${game.homeTeam} (${game.awayScore ?? 0}–${game.homeScore ?? 0}) at ${game.venue}.`;
+    return `Full ${d.fullDate} post-game box score recap, quarter breakdown, and top player highlights from ${game.awayTeam} vs. ${game.homeTeam} (${game.awayScore ?? 0}–${game.homeScore ?? 0}) at ${game.venue}.`;
   }
-  return `Complete pre-game preview, projected starting lineups, point spread odds, and tactical keys for ${game.awayTeam} vs. ${game.homeTeam} (${game.statusDetail}) at ${game.venue}.`;
+  return `Complete pre-game preview, projected starting lineups, point spread odds, and tactical keys for ${game.awayTeam} vs. ${game.homeTeam} on ${d.fullDate} (${d.timePht}) at ${game.venue}.`;
 }
 
 const config = useRuntimeConfig();
@@ -224,12 +227,12 @@ useHead({
             <div>
               <div class="flex items-center gap-2">
                 <span class="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-black uppercase tracking-wider">
-                  Updated Today
+                  Verified PHT · {{ homeData?.manilaDateLabel || 'Oct 17, 2026' }}
                 </span>
-                <span class="text-[11px] font-bold text-cyan-300">All Matches Today Blog Coverage</span>
+                <span class="text-[11px] font-bold text-cyan-300">Exact Game Dates &amp; Live Scoreboard</span>
               </div>
               <h2 class="text-lg sm:text-xl font-black text-white tracking-tight mt-1">
-                Today’s Match Blogs: Live Updates, Previews &amp; Box Score Recaps
+                Match Blogs &amp; Game Schedule: Live Updates, Previews &amp; Recaps
               </h2>
             </div>
 
@@ -307,7 +310,7 @@ useHead({
                         ? 'bg-slate-950/85 text-cyan-300 border border-cyan-500/40 backdrop-blur-xs'
                         : 'bg-slate-950/90 text-slate-200 border border-slate-700'"
                     >
-                      {{ game.status === 'live' ? `LIVE · ${game.statusDetail.replace(/^LIVE\s*[-·•:]?\s*/i, '')}` : game.status === 'final' ? 'FINAL BOX SCORE' : game.statusDetail }}
+                      {{ game.status === 'live' ? `LIVE · ${game.statusDetail.replace(/^LIVE\s*[-·•:]?\s*/i, '')}` : game.statusDetail }}
                     </span>
                   </div>
 
@@ -344,8 +347,10 @@ useHead({
                 <!-- News Blog Metadata Kicker (Matches LatestNews / ArticleCard style) -->
                 <div class="flex items-center gap-1.5 text-xs text-slate-400 mt-3 mb-1.5 flex-wrap">
                   <span class="font-black text-orange-400 tracking-wider uppercase text-[11px] drop-shadow-[0_0_6px_rgba(249,115,22,0.3)]">
-                    {{ game.league }} · {{ game.stage }}
+                    {{ game.league }} · {{ formatGameDateLabelPht(game.gameTimeUtc).shortDate }}
                   </span>
+                  <span class="text-slate-600" aria-hidden="true">·</span>
+                  <span class="text-cyan-300 font-semibold text-[11px]">{{ formatGameDateLabelPht(game.gameTimeUtc).timePht }}</span>
                   <span class="text-slate-600" aria-hidden="true">·</span>
                   <span class="text-slate-400 text-[11px] truncate">{{ game.venue }}</span>
                 </div>
@@ -416,12 +421,12 @@ useHead({
               <div>
                 <div class="flex items-center gap-2">
                   <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-wider">
-                    Today’s NBA Slate
+                    Oct 15, 2026 PHT Slate
                   </span>
                   <span class="text-[11px] font-bold text-amber-300">5 Matchup Blogs &amp; Final Recaps</span>
                 </div>
                 <h2 class="text-lg sm:text-xl font-black text-white tracking-tight">
-                  NBA Matchup Blogs, Box Scores &amp; Predictions Today
+                  NBA Preseason Matchup Blogs, Box Scores &amp; Predictions (Oct 15 PHT)
                 </h2>
               </div>
             </div>
@@ -476,7 +481,7 @@ useHead({
                 <div class="flex items-center gap-1.5 text-xs text-slate-400 mt-3 mb-1.5 flex-wrap">
                   <span class="font-black text-orange-400 uppercase text-[11px]">NBA · {{ pred.expertPick }}</span>
                   <span class="text-slate-600" aria-hidden="true">·</span>
-                  <span class="text-slate-400 text-[11px]">{{ pred.tipOffManila }}</span>
+                  <span class="text-slate-400 text-[11px]">{{ pred.tipOffPht }}</span>
                 </div>
 
                 <h3 class="font-bold text-base md:text-lg text-white group-hover:text-amber-300 transition-colors leading-snug line-clamp-2">
@@ -486,7 +491,7 @@ useHead({
                 </h3>
 
                 <p class="mt-2 text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
-                  {{ pred.summary }}
+                  {{ pred.shortBlogLead }}
                 </p>
               </div>
 

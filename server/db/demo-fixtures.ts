@@ -573,11 +573,15 @@ Stay tuned for more updates as the Best-of-3 Quarterfinals continue.`,
     imageCredit: `Official NBA Preseason Action (${pred.awayTeam.abbr} & ${pred.homeTeam.abbr}) / TipOffPh`,
     seoTitle: `${pred.blogTitle} | TipOffPh NBA Predictions`,
     seoDescription: `${pred.shortBlogLead} Read our full NBA preseason prediction, odds breakdown (${pred.spreadLine}, ${pred.overUnderLine}), and projected score.`,
-    isFeatured: idx < 5,
-    isBreaking: idx === 0,
+    isFeatured: false,
+    isBreaking: false,
     status: 'published',
-    publishedAt: _isoMinutesAgo(60 + idx * 3),
-    createdAt: _isoMinutesAgo(120 + idx * 3)
+    publishedAt: pred.slateGroup === 'oct15-tomorrow'
+      ? new Date(Date.parse('2026-10-15T04:30:00.000Z') - idx * 5 * 60 * 1000).toISOString()
+      : new Date(Date.parse('2026-10-14T04:30:00.000Z') - idx * 5 * 60 * 1000).toISOString(),
+    createdAt: pred.slateGroup === 'oct15-tomorrow'
+      ? new Date(Date.parse('2026-10-15T01:00:00.000Z') - idx * 5 * 60 * 1000).toISOString()
+      : new Date(Date.parse('2026-10-14T01:00:00.000Z') - idx * 5 * 60 * 1000).toISOString()
   })),
   {
     id: 'art-pba-003',
