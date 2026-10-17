@@ -20,6 +20,11 @@ export default defineNuxtConfig({
     head: {
       meta: [
         { name: 'google-site-verification', content: 'LJKRQV9a1yzDsMsgiVruS6CzH8zNhSRjVzF8Jxm3bPU' }
+      ],
+      link: [
+        { rel: 'icon', type: 'image/png', href: '/tipoff-favicon.png' },
+        { rel: 'shortcut icon', type: 'image/png', href: '/tipoff-favicon.png' },
+        { rel: 'apple-touch-icon', href: '/tipoff-favicon.png' }
       ]
     }
   },
@@ -40,6 +45,11 @@ export default defineNuxtConfig({
     '/img/**': {
       headers: {
         'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
+      }
+    },
+    '/tipoff-favicon.png': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400'
       }
     },
     '/favicon.ico': {
