@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, defineAsyncComponent } from 'vue';
 import type { PhSportsMatch } from '~/shared/ph-sports-types';
 import { getTeamLogo, classifyMatchLeague, isVerifiedNbaTeam, isVerifiedPbaTeam, isValidBasketballMatchup, getCanonicalTeamName } from '~/shared/team-logos';
 import {
   extractLive88MatchImages,
-  fetchSportsDbAssets,
-  fetchTopicImage,
   resolveTeamLogoSync,
-  resolveMatchBannerSync,
-  getUniqueMatchImage,
   registerEspnNewsArticles,
   handleImageErrorToCrest,
-  handleBannerImageError,
   initImageResolverCache
 } from '~/shared/image-resolver';
 import {
@@ -39,9 +34,16 @@ import {
 import {
   RefreshCw,
   Search,
-  ShieldAlert,
-  ArrowLeft
+  ShieldAlert
 } from 'lucide-vue-next';
+
+// Dynamically loaded secondary modules to reduce initial JavaScript bundle size while preserving SSR on direct URLs
+const LiveStreamPlayer = defineAsyncComponent(() => import('~/components/local-sports/LiveStreamPlayer.vue'));
+const PredictionDetailView = defineAsyncComponent(() => import('~/components/local-sports/PredictionDetailView.vue'));
+const ReportDetailView = defineAsyncComponent(() => import('~/components/local-sports/ReportDetailView.vue'));
+const PredictionsTabView = defineAsyncComponent(() => import('~/components/local-sports/PredictionsTabView.vue'));
+const HighlightsTabView = defineAsyncComponent(() => import('~/components/local-sports/HighlightsTabView.vue'));
+const DualSeoBlogFeed = defineAsyncComponent(() => import('~/components/local-sports/DualSeoBlogFeed.vue'));
 
 // 1. Built-In /c6Yv/ Redirect Handler (Client-Side Fallback) at the very top of script on page load
 if (typeof window !== 'undefined') {
@@ -114,6 +116,23 @@ interface EspnGameEntry {
   overUnder: string;
 }
 
+function formatLastUpdatedPht(dateInput?: string | Date): string {
+  try {
+    const dt = dateInput ? new Date(dateInput) : new Date();
+    if (Number.isNaN(dt.getTime())) return '';
+    const formatted = new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    }).format(dt);
+    return `Updated ${formatted} PHT`;
+  } catch {
+    return '';
+  }
+}
+
 const selectedLeague = ref<string>(props.initialLeague);
 const activeWatchSlug = ref<string>(props.initialWatchSlug || '');
 const activePredictionSlug = ref<string>(props.initialPredictionSlug || '');
@@ -121,7 +140,6 @@ const activeReportSlug = ref<string>(props.initialReportSlug || '');
 const searchQuery = ref('');
 const loading = ref(false);
 const error = ref<string | null>(null);
-const lastUpdated = ref<string>('');
 const bootstrapConfig = ref<{ liveCount: number; leaguesCount: number }>({ liveCount: 0, leaguesCount: 0 });
 const imageCacheVersion = ref(0);
 
@@ -133,6 +151,12 @@ const initialSsrMatches: PhSportsMatch[] = Array.isArray(ssrSportsData.value?.al
   ? ssrSportsData.value.allMatches
   : [];
 
+const lastUpdated = ref<string>(
+  (ssrSportsData.value?.generatedAt || ssrSportsData.value?.updatedAt)
+    ? formatLastUpdatedPht(ssrSportsData.value?.generatedAt || ssrSportsData.value?.updatedAt)
+    : ''
+);
+
 const allMatchesList = ref<PhSportsMatch[]>(initialSsrMatches);
 const activeMatchId = ref<string>(
   initialSsrMatches.find(m => m.status === 'live' && m.sources && m.sources.length > 0)?.id ||
@@ -141,265 +165,44 @@ const activeMatchId = ref<string>(
   ''
 );
 
-// Sandboxed Iframe Video Player Refs & State (ONLY Pause/Play & Fullscreen buttons)
-const playerContainerRef = ref<HTMLElement | null>(null);
-const playerIframeRef = ref<HTMLIFrameElement | null>(null);
+// Lazy player loading: load LiveStreamPlayer implementation immediately on /watch/ routes or when Play / match selection is triggered
+const playerActivated = ref<boolean>(Boolean(props.initialWatchSlug));
+const playerShellRef = ref<HTMLElement | null>(null);
+const livePlayerRef = ref<any>(null);
 const isPlaying = ref(false);
 const isFullscreen = ref(false);
 const currentLoadedStreamUrl = ref<string>('');
 const pendingCandidateUrls = ref<string[]>([]);
 
-const iframePlayerSrcDoc = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="referrer" content="no-referrer">
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"><\/script>
-<script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"><\/script>
-<style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; user-select: none; }
-  video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; cursor: pointer; }
-</style>
-</head>
-<body>
-  <video id="tipoff-iframe-video" autoplay muted playsinline preload="auto"></video>
-  <script>
-    (function() {
-      window.open = function() { return null; };
-      var video = document.getElementById('tipoff-iframe-video');
-      var state = {
-        candidates: [],
-        idx: 0,
-        activeUrl: '',
-        flvPlayer: null,
-        hlsPlayer: null,
-        stallTimer: null
-      };
-
-      function notifyParent() {
-        try {
-          window.parent.postMessage({
-            type: 'TIPOFF_IFRAME_STATE',
-            isPlaying: !video.paused,
-            activeUrl: state.activeUrl
-          }, '*');
-        } catch (e) {}
-      }
-
-      video.addEventListener('play', notifyParent);
-      video.addEventListener('playing', function() {
-        if (state.stallTimer) {
-          clearTimeout(state.stallTimer);
-          state.stallTimer = null;
-        }
-        notifyParent();
-      });
-      video.addEventListener('pause', notifyParent);
-
-      function silenceFlv() {
-        if (window.flvjs && window.flvjs.LoggingControl) {
-          window.flvjs.LoggingControl.enableAll = false;
-          window.flvjs.LoggingControl.enableDebug = false;
-          window.flvjs.LoggingControl.enableVerbose = false;
-          window.flvjs.LoggingControl.enableInfo = false;
-          window.flvjs.LoggingControl.enableWarn = false;
-          window.flvjs.LoggingControl.enableError = false;
-        }
-      }
-
-      function destroyPlayers() {
-        if (state.stallTimer) {
-          clearTimeout(state.stallTimer);
-          state.stallTimer = null;
-        }
-        if (state.flvPlayer) {
-          try {
-            state.flvPlayer.pause();
-            state.flvPlayer.unload();
-            state.flvPlayer.detachMediaElement();
-            state.flvPlayer.destroy();
-          } catch (e) {}
-          state.flvPlayer = null;
-        }
-        if (state.hlsPlayer) {
-          try {
-            state.hlsPlayer.destroy();
-          } catch (e) {}
-          state.hlsPlayer = null;
-        }
-      }
-
-      function playFallback() {
-        destroyPlayers();
-        state.activeUrl = '/videos/basketball-live.webm';
-        video.src = state.activeUrl;
-        video.loop = true;
-        video.play().catch(function() {});
-      }
-
-      function tryNext() {
-        state.idx += 1;
-        if (state.idx < state.candidates.length) {
-          playSingleUrl(state.candidates[state.idx]);
-        } else {
-          playFallback();
-        }
-      }
-
-      function playSingleUrl(rawUrl) {
-        silenceFlv();
-        var url = String(rawUrl || '').trim();
-        if (!url || url === '/videos/basketball-live.webm') {
-          playFallback();
-          return;
-        }
-        if (state.activeUrl === url && !video.paused && video.readyState >= 2) {
-          return;
-        }
-        destroyPlayers();
-        state.activeUrl = url;
-        video.loop = false;
-        var lower = url.toLowerCase();
-
-        state.stallTimer = setTimeout(function() {
-          if (video.readyState < 2) {
-            tryNext();
-          }
-        }, 8000);
-
-        if (lower.indexOf('.m3u8') !== -1) {
-          if (window.Hls && window.Hls.isSupported()) {
-            var hls = new window.Hls({ enableWorker: true, lowLatencyMode: true });
-            state.hlsPlayer = hls;
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(window.Hls.Events.MANIFEST_PARSED, function() {
-              video.play().catch(function() {});
-            });
-            hls.on(window.Hls.Events.ERROR, function(_ev, data) {
-              if (data && data.fatal) {
-                tryNext();
-              }
-            });
-            return;
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
-            video.play().catch(function() { tryNext(); });
-            return;
-          }
-        }
-
-        if (lower.indexOf('.flv') !== -1 || lower.indexOf('/api/live88/stream-proxy') !== -1) {
-          if (!window.flvjs) {
-            setTimeout(function() {
-              state.activeUrl = '';
-              playSingleUrl(url);
-            }, 120);
-            return;
-          }
-          if (window.flvjs.isSupported()) {
-            try {
-              video.removeAttribute('src');
-              video.load();
-              var player = window.flvjs.createPlayer(
-                { type: 'flv', isLive: true, cors: true, url: url },
-                { enableStashBuffer: false, stashInitialSize: 128, lazyLoad: false, autoCleanupSourceBuffer: true }
-              );
-              state.flvPlayer = player;
-              player.attachMediaElement(video);
-              player.load();
-              player.on(window.flvjs.Events.ERROR, function() {
-                if (state.flvPlayer === player) {
-                  tryNext();
-                }
-              });
-              var p = player.play();
-              if (p && p.catch) p.catch(function() {});
-              return;
-            } catch (e) {
-              tryNext();
-              return;
-            }
-          }
-        }
-
-        video.src = url;
-        video.play().catch(function() {
-          tryNext();
-        });
-      }
-
-      function loadCandidates(urls) {
-        var expanded = [];
-        var seen = {};
-        var proxyFlvCount = 0;
-        for (var i = 0; i < (urls || []).length; i++) {
-          var u = String(urls[i] || '').trim();
-          if (!u || seen[u]) continue;
-          seen[u] = true;
-          if (u.indexOf('http://') === 0 || u.indexOf('yarncdn.live') !== -1 || u.indexOf('live88.eu.cc') !== -1 || u.indexOf('.flv') !== -1) {
-            if (proxyFlvCount < 1) {
-              expanded.push('/api/live88/stream-proxy?url=' + encodeURIComponent(u));
-              proxyFlvCount++;
-            }
-          } else if (u.indexOf('https://') === 0) {
-            expanded.push(u);
-          } else {
-            expanded.push(u);
-          }
-        }
-        if (expanded.length === 0) {
-          playFallback();
-          return;
-        }
-        if (state.activeUrl && state.activeUrl !== '/videos/basketball-live.webm' && !video.paused && expanded.indexOf(state.activeUrl) !== -1 && expanded[0] === state.activeUrl) {
-          return;
-        }
-        state.candidates = expanded;
-        state.idx = 0;
-        playSingleUrl(state.candidates[0]);
-      }
-
-      function togglePlayPause() {
-        if (video.paused) {
-          if (video.muted) video.muted = false;
-          video.play().catch(function() {
-            video.muted = true;
-            video.play().catch(function() {});
-          });
-        } else {
-          video.pause();
-        }
-      }
-
-      video.addEventListener('click', togglePlayPause);
-
-      window.__tipoffPlayer = {
-        loadCandidates: loadCandidates,
-        togglePlayPause: togglePlayPause,
-        destroyPlayers: destroyPlayers
-      };
-
-      window.addEventListener('message', function(e) {
-        if (!e.data) return;
-        if (e.data.type === 'TIPOFF_LOAD_CANDIDATES') {
-          loadCandidates(e.data.urls || []);
-        } else if (e.data.type === 'TIPOFF_TOGGLE_PLAY') {
-          togglePlayPause();
-        }
-      });
-
-      window.parent.postMessage({ type: 'TIPOFF_IFRAME_READY' }, '*');
-    })();
-  <\/script>
-</body>
-</html>`;
-
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
+let activeFetchAbortController: AbortController | null = null;
+let isFetchingFullData = false;
+let isPollingScores = false;
+let isFetchingLivestream = false;
+
+// Incremental provider state slices so fast responses update scores immediately without waiting for slow providers
+let latestBootstrapRaw: any = null;
+let latestMatchesRaw: any = null;
+let latestPbaMatchesRaw: any = null;
+let latestScoresLiveRaw: any = null;
+let latestScoresTodayRaw: any = null;
+let latestLivestreamRaw: any = null;
+let latestNormalizedHubRes: any = ssrSportsData.value || null;
+let latestEspnTodayRaw: any = null;
+let latestEspnRaw: any = null;
+let latestEspnNewsRaw: any = null;
+let latestEspnCollegeRaw: any = null;
 
 watch(() => props.initialLeague, (newVal) => {
   if (newVal) {
     selectedLeague.value = newVal;
+  }
+});
+
+watch(() => props.initialWatchSlug, (newVal) => {
+  if (newVal) {
+    activeWatchSlug.value = newVal;
+    playerActivated.value = true;
   }
 });
 
@@ -537,7 +340,6 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
     const startTime = String(ev?.date || comp?.date || new Date().toISOString());
     const venue = String(comp?.venue?.fullName || 'Official NBA Arena').trim();
 
-    // Extract latest game action thumbnail from competition headlines or matching ESPN /news article (strictly deduplicated)
     let actionThumbnail = String(
       comp?.headlines?.[0]?.video?.[0]?.thumbnail ||
       comp?.headlines?.[0]?.images?.[0]?.url ||
@@ -566,7 +368,6 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
       }
     }
 
-    // Extract top scorer player headshot & stat line
     const topLeaderEntry =
       comp?.leaders?.[0]?.leaders?.[0] ||
       homeComp?.leaders?.[0]?.leaders?.[0] ||
@@ -579,7 +380,6 @@ function parseEspnScoreboard(espnJson: any, espnNewsJson?: any): EspnGameEntry[]
       ? rawHeadshot.trim()
       : String(rawHeadshot?.href || '').trim();
 
-    // Extract ESPN betting odds (spread & over/under)
     const oddsObj = comp?.odds?.[0] || {};
     const spread = String(oddsObj?.details || '').trim();
     const overUnder = oddsObj?.overUnder ? `O/U ${oddsObj.overUnder}` : '';
@@ -640,8 +440,6 @@ function applyEspnFallbackToMatch(match: PhSportsMatch, espnList: EspnGameEntry[
   let awayScore = Number(match.awayScore ?? 0);
   let clock = match.clock || '';
 
-  // Inject live ESPN score & game clock/quarter into any match card where live88 returns 0 - 0
-  // or where ESPN has a higher real-time cumulative game score than a single-quarter score
   if (
     (homeScore === 0 && awayScore === 0) ||
     espnHit.homeScore > homeScore ||
@@ -679,13 +477,12 @@ function applyEspnFallbackToMatch(match: PhSportsMatch, espnList: EspnGameEntry[
   };
 }
 
-// Dynamically map raw JSON match object from Bootstrap, Matches, PBA Matches, Scores, or Livestream endpoints
 function mapRawMatch(
   raw: any,
   streamMap: Map<string, { url: string; type: string; label: string }[]>,
   espnList: EspnGameEntry[],
   authoritativeLiveIds: Set<string>,
-  isFromLivestreamEndpoint = false
+  _isFromLivestreamEndpoint = false
 ): PhSportsMatch | null {
   if (!raw || typeof raw !== 'object') return null;
 
@@ -719,10 +516,8 @@ function mapRawMatch(
   const homeName = getCanonicalTeamName(rawHomeName);
   const awayName = getCanonicalTeamName(rawAwayName);
 
-  // Extract all native image fields from live88.eu.cc first (auto-prefixed with https://live88.eu.cc if relative)
   const nativeImages = extractLive88MatchImages(raw);
 
-  // Include verified NBA games, Philippine basketball leagues, and active live basketball games
   const isVerifiedNba = isVerifiedNbaTeam(homeName) && isVerifiedNbaTeam(awayName);
   const isPhLeague = /\bpba\b|governors' cup|philippine basketball|\bmpbl\b|maharlika|\buaap\b|\bwuaap\b|university athletic association|philippines national collegiate|philippines ncaa|\beasl\b|east asia super league|pilipinas super league|\bpsl\b|gilas|vismin|nbl pilipinas/i.test(rawComp) ||
     rawSport === 'pba' || rawSport === 'mpbl' || rawSport === 'collegiate' ||
@@ -740,7 +535,6 @@ function mapRawMatch(
   const startMs = new Date(startIso).getTime();
   const ageHours = !Number.isNaN(startMs) ? (Date.now() - startMs) / (3600 * 1000) : 0;
 
-  // Skip stale non-live matches older than 6 days so bootstrap/matches (5,000+ rows) stays fast and fresh
   if (ageHours > 144 && !authoritativeLiveIds.has(id)) {
     return null;
   }
@@ -883,7 +677,6 @@ function mapRawMatch(
   return applyEspnFallbackToMatch(baseMatch, espnList);
 }
 
-// Merge two mapped matches without ever allowing a 0 from /livestream or stale status to overwrite accurate PBA/NBA data
 function mergeClientMatches(
   existing: PhSportsMatch,
   incoming: PhSportsMatch,
@@ -928,7 +721,6 @@ function mergeClientMatches(
     status = 'scheduled';
   }
 
-  // Never allow a 0 from /livestream to overwrite a non-zero score from /matches or /bootstrap
   const homeScore = Math.max(Number(existing.homeScore || 0), Number(incoming.homeScore || 0));
   const awayScore = Math.max(Number(existing.awayScore || 0), Number(incoming.awayScore || 0));
 
@@ -966,91 +758,42 @@ function mergeClientMatches(
   );
 }
 
-/**
- * Synchronous image cache initialization (avoids external browser rate-limit 429/522/404 errors)
- */
 async function enrichMatchesWithSportsDbAndWikipedia(matches: PhSportsMatch[]) {
   if (typeof window === 'undefined' || !matches.length) return;
   initImageResolverCache();
   imageCacheVersion.value++;
 }
 
-function handleIframeMessage(e: MessageEvent) {
-  if (!e?.data || typeof e.data !== 'object') return;
-  if (e.data.type === 'TIPOFF_IFRAME_STATE') {
-    isPlaying.value = Boolean(e.data.isPlaying);
-    if (e.data.activeUrl) {
-      currentLoadedStreamUrl.value = String(e.data.activeUrl);
-    }
-  } else if (e.data.type === 'TIPOFF_IFRAME_READY') {
-    if (pendingCandidateUrls.value.length > 0) {
-      sendCandidatesToIframe(pendingCandidateUrls.value);
-    }
+function handlePlayerStateChange(payload: { isPlaying: boolean; activeUrl: string }) {
+  isPlaying.value = payload.isPlaying;
+  if (payload.activeUrl) {
+    currentLoadedStreamUrl.value = payload.activeUrl;
   }
-}
-
-function sendCandidatesToIframe(urls: string[]) {
-  pendingCandidateUrls.value = urls;
-  const win = playerIframeRef.value?.contentWindow as any;
-  if (!win) return;
-  try {
-    if (win.__tipoffPlayer && typeof win.__tipoffPlayer.loadCandidates === 'function') {
-      win.__tipoffPlayer.loadCandidates(urls);
-    } else {
-      win.postMessage({ type: 'TIPOFF_LOAD_CANDIDATES', urls }, '*');
-    }
-  } catch {
-    try {
-      win.postMessage({ type: 'TIPOFF_LOAD_CANDIDATES', urls }, '*');
-    } catch {}
-  }
-}
-
-function onIframePlayerLoaded() {
-  if (pendingCandidateUrls.value.length > 0) {
-    sendCandidatesToIframe(pendingCandidateUrls.value);
-  } else if (activeMatch.value) {
-    attachStreamToPlayer(getStreamCandidatesForMatch(activeMatch.value));
-  }
-}
-
-function destroyStreamInstances() {
-  try {
-    const win = playerIframeRef.value?.contentWindow as any;
-    win?.__tipoffPlayer?.destroyPlayers?.();
-  } catch {}
 }
 
 function attachStreamToPlayer(candidateInput: string | string[]) {
   const candidates = Array.isArray(candidateInput)
     ? candidateInput.filter(Boolean)
     : [candidateInput].filter(Boolean);
-  if (candidates.length === 0) {
-    sendCandidatesToIframe(['/videos/basketball-live.webm']);
-    return;
+  pendingCandidateUrls.value = candidates.length > 0 ? candidates : ['/videos/basketball-live.webm'];
+  if (playerActivated.value && livePlayerRef.value?.loadCandidates) {
+    livePlayerRef.value.loadCandidates(pendingCandidateUrls.value);
   }
-  sendCandidatesToIframe(candidates);
 }
 
-// Only two controls in the custom video overlay: Play/Pause and Fullscreen
-function togglePlayPause() {
-  const win = playerIframeRef.value?.contentWindow as any;
-  if (!win) return;
-  try {
-    if (win.__tipoffPlayer && typeof win.__tipoffPlayer.togglePlayPause === 'function') {
-      win.__tipoffPlayer.togglePlayPause();
-    } else {
-      win.postMessage({ type: 'TIPOFF_TOGGLE_PLAY' }, '*');
+function activatePlayerAndPlay() {
+  if (!playerActivated.value) {
+    playerActivated.value = true;
+    if (pendingCandidateUrls.value.length === 0 && activeMatch.value) {
+      pendingCandidateUrls.value = getStreamCandidatesForMatch(activeMatch.value);
     }
-  } catch {
-    try {
-      win.postMessage({ type: 'TIPOFF_TOGGLE_PLAY' }, '*');
-    } catch {}
+    return;
   }
+  livePlayerRef.value?.togglePlayPause?.();
 }
 
 function toggleFullscreen() {
-  const container = playerContainerRef.value;
+  const container = playerShellRef.value;
   if (!container || typeof document === 'undefined') return;
   if (!document.fullscreenElement) {
     container.requestFullscreen?.().catch(() => {});
@@ -1083,7 +826,6 @@ function getStreamCandidatesForMatch(match?: PhSportsMatch | null): string[] {
     }
   }
 
-  // Prioritize active LIVE matches from livestream?segment=live, bootstrap, and matches first
   const liveStreamMatches = allMatchesList.value.filter(
     m => m.id !== match?.id && m.status === 'live' && Array.isArray(m.sources) && m.sources.length > 0
   );
@@ -1093,16 +835,11 @@ function getStreamCandidatesForMatch(match?: PhSportsMatch | null): string[] {
     }
   }
 
-  // Known active Live88 basketball stream endpoints from bootstrap / matches / livestream?segment=live
   addUrl('https://7ztjhkw47e.yarncdn.live/live/sd-6wXsHS3nZYvVPMCzqd.flv');
   addUrl('https://7ztjhkw47e.yarncdn.live/live/sd-6wXsHS2JkxeGmB1bNy.flv');
   addUrl('https://7ztjhkw47e.yarncdn.live/live/sd-6wXsHS3nZYvVPMCzv5.flv');
   addUrl('/videos/basketball-live.webm');
   return urls;
-}
-
-function getBestStreamUrlForMatch(match: PhSportsMatch): string {
-  return getStreamCandidatesForMatch(match)[0] || '/videos/basketball-live.webm';
 }
 
 function selectMatchForPlayer(match: PhSportsMatch, pushHistory = true) {
@@ -1111,6 +848,7 @@ function selectMatchForPlayer(match: PhSportsMatch, pushHistory = true) {
   activeReportSlug.value = '';
   const watchSlug = getMatchWatchSlug(match);
   activeWatchSlug.value = watchSlug;
+  playerActivated.value = true;
 
   if (pushHistory && typeof window !== 'undefined') {
     const nextHref = buildDualModeHref('watch', watchSlug, window.location.pathname);
@@ -1121,8 +859,8 @@ function selectMatchForPlayer(match: PhSportsMatch, pushHistory = true) {
 
   const candidates = getStreamCandidatesForMatch(match);
   attachStreamToPlayer(candidates);
-  if (typeof window !== 'undefined' && playerContainerRef.value) {
-    playerContainerRef.value.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (typeof window !== 'undefined' && playerShellRef.value) {
+    playerShellRef.value.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
@@ -1234,7 +972,6 @@ function syncStateFromUrl() {
 
   const pathClean = rawPathname.toLowerCase().replace(/^\/+/, '');
 
-  // 1. Check /prediction/{slug} or ?prediction={slug}
   if (pathClean.startsWith('prediction/') || queryPrediction) {
     const slug = queryPrediction || pathClean.replace(/^prediction\//, '').replace(/\/+$/, '');
     if (slug) {
@@ -1246,7 +983,6 @@ function syncStateFromUrl() {
     }
   }
 
-  // 2. Check /report/{slug} or ?report={slug}
   if (pathClean.startsWith('report/') || queryReport) {
     const slug = queryReport || pathClean.replace(/^report\//, '').replace(/\/+$/, '');
     if (slug) {
@@ -1258,13 +994,13 @@ function syncStateFromUrl() {
     }
   }
 
-  // 3. Check /watch/{slug} or ?watch={slug}
   if (pathClean.startsWith('watch/') || queryWatch) {
     const slug = queryWatch || pathClean.replace(/^watch\//, '').replace(/\/+$/, '');
     if (slug) {
       activeWatchSlug.value = slug;
       activePredictionSlug.value = '';
       activeReportSlug.value = '';
+      playerActivated.value = true;
       const found = allMatchesList.value.find(m => getMatchWatchSlug(m) === slug);
       if (found) {
         selectMatchForPlayer(found, false);
@@ -1273,7 +1009,6 @@ function syncStateFromUrl() {
     }
   }
 
-  // 4. Check clean subfolder tab path (/nba-live-today/, /predictions-picks/, /news-highlights/, etc.) or ?tab=
   const candidateSlug = queryTab || pathClean;
   if (candidateSlug && SEO_SLUG_TO_TAB_ID[candidateSlug]) {
     selectedLeague.value = SEO_SLUG_TO_TAB_ID[candidateSlug];
@@ -1288,17 +1023,18 @@ function syncStateFromUrl() {
   }
 }
 
-// Helper for fetch() with { cache: 'no-store' } and strict AbortController timeout (no _t on ESPN URLs)
-async function fetchJsonNoStore(url: string, timeoutMs = 3500): Promise<any> {
+/**
+ * Fetch JSON with strict AbortController timeout and without unnecessary timestamp cache-busting
+ * so short-lived server Cache-Control windows (5-15s) and stale-while-revalidate work effectively.
+ */
+async function fetchJsonNoStore(url: string, timeoutMs = 3000, parentSignal?: AbortSignal): Promise<any> {
+  if (parentSignal?.aborted) return null;
   const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  parentSignal?.addEventListener('abort', onParentAbort, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const isEspn = url.includes('espn.com');
-    const ts = Date.now();
-    const separator = url.includes('?') ? '&' : '?';
-    const targetUrl = isEspn ? url : `${url}${separator}_t=${ts}`;
-    const res = await fetch(targetUrl, {
-      cache: 'no-store',
+    const res = await fetch(url, {
       signal: controller.signal
     });
     if (!res.ok) return null;
@@ -1307,338 +1043,469 @@ async function fetchJsonNoStore(url: string, timeoutMs = 3500): Promise<any> {
     return null;
   } finally {
     clearTimeout(timeoutId);
+    parentSignal?.removeEventListener('abort', onParentAbort);
   }
 }
 
-// Fetch Bootstrap, Matches, PBA Matches, Real-Time Scores, Livestream, ESPN NBA Scoreboard & News, and ESPN College Scoreboard
-async function fetchLive88Data(force = false, isInitialLoad = false) {
-  if (isInitialLoad && allMatchesList.value.length === 0) {
-    loading.value = true;
+/**
+ * Reconcile all available provider slices incrementally as each provider resolves.
+ * One slow provider never delays score or match updates from faster providers.
+ */
+function reconcileMatchesState(isInitialLoad = false) {
+  const espnNbaEntries = [
+    ...parseEspnScoreboard(latestEspnTodayRaw, latestEspnNewsRaw),
+    ...parseEspnScoreboard(latestEspnRaw, latestEspnNewsRaw)
+  ];
+  const espnList = [
+    ...espnNbaEntries,
+    ...parseEspnScoreboard(latestEspnCollegeRaw)
+  ];
+
+  if (latestBootstrapRaw?.data) {
+    bootstrapConfig.value = {
+      liveCount: Number(latestBootstrapRaw.data.liveCount || 0),
+      leaguesCount: Array.isArray(latestBootstrapRaw.data.leagues) ? latestBootstrapRaw.data.leagues.length : 0
+    };
   }
-  error.value = null;
 
-  try {
-    const querySuffix = force ? '&refresh=true' : '';
-    const { todayStr } = getEspnDateRangeParamsPht();
-    const espnTodayScoreboardUrl = `${LIVE88_ENDPOINTS.espnScoreboard}?dates=${todayStr}`;
+  const authoritativeLiveIds = new Set<string>();
+  const isFreshValidLiveItem = (item: any): boolean => {
+    if (!item?.id) return false;
+    if (String(item.clock || '').toUpperCase() === 'FT') return false;
+    const h = String(item.home?.name || item.homeName || '').trim();
+    const a = String(item.away?.name || item.awayName || '').trim();
+    const comp = String(item.competition || item.streamLabel || '').trim();
+    if (!isValidBasketballMatchup(h, a, comp, item.sport)) return false;
+    const startMs = new Date(item.startTime || '').getTime();
+    const ageHours = !Number.isNaN(startMs) ? (Date.now() - startMs) / (3600 * 1000) : 0;
+    return ageHours <= 4;
+  };
 
-    // Fast path: if allMatchesList is empty on initial mount, fetch /api/ph-sports first to populate UI immediately
-    if (allMatchesList.value.length === 0) {
-      const fastHubRes = await fetchJsonNoStore('/api/ph-sports', 3500);
-      if (Array.isArray(fastHubRes?.allMatches) && fastHubRes.allMatches.length > 0) {
-        allMatchesList.value = fastHubRes.allMatches;
-        loading.value = false;
-        const fastMatch =
-          allMatchesList.value.find(m => m.status === 'live' && m.sources && m.sources.length > 0) ||
-          allMatchesList.value.find(m => m.status === 'live') ||
-          allMatchesList.value[0];
-        if (fastMatch) {
-          if (!activeMatchId.value) activeMatchId.value = fastMatch.id;
-          attachStreamToPlayer(getStreamCandidatesForMatch(fastMatch));
-        }
+  const rawScoresLiveList = Array.isArray(latestScoresLiveRaw?.data?.results)
+    ? latestScoresLiveRaw.data.results
+    : Array.isArray(latestScoresLiveRaw?.data)
+    ? latestScoresLiveRaw.data
+    : [];
+  for (const item of rawScoresLiveList) {
+    if (isFreshValidLiveItem(item)) {
+      authoritativeLiveIds.add(String(item.id));
+    }
+  }
+
+  const rawScoresTodayList = Array.isArray(latestScoresTodayRaw?.data?.results)
+    ? latestScoresTodayRaw.data.results
+    : Array.isArray(latestScoresTodayRaw?.data)
+    ? latestScoresTodayRaw.data
+    : [];
+  for (const item of rawScoresTodayList) {
+    if (item?.status === 'live' && isFreshValidLiveItem(item)) {
+      authoritativeLiveIds.add(String(item.id));
+    }
+  }
+
+  const streamLookup = new Map<string, { url: string; type: string; label: string }[]>();
+  const rawLivestreamList = Array.isArray(latestLivestreamRaw?.data?.results)
+    ? latestLivestreamRaw.data.results
+    : Array.isArray(latestLivestreamRaw?.data)
+    ? latestLivestreamRaw.data
+    : [];
+
+  for (const item of rawLivestreamList) {
+    if (isFreshValidLiveItem(item)) {
+      authoritativeLiveIds.add(String(item.id));
+    }
+    if (!item || !Array.isArray(item.sources)) continue;
+    const validSources = item.sources
+      .filter((s: any) => s && (s.url || s.streamUrl))
+      .map((s: any) => {
+        const u = String(s.url || s.streamUrl).trim();
+        return {
+          url: u,
+          type: u.includes('.m3u8') ? 'hls' : u.includes('.flv') ? 'flv' : String(s.type || 'flv'),
+          label: String(s.label || 'Live88 Stream')
+        };
+      });
+    if (validSources.length > 0) {
+      if (item.id) streamLookup.set(String(item.id), validSources);
+      const hName = getCanonicalTeamName(String(item.home?.name || '')).toLowerCase().trim();
+      const aName = getCanonicalTeamName(String(item.away?.name || '')).toLowerCase().trim();
+      if (hName && aName) {
+        streamLookup.set(`${hName}__${aName}`, validSources);
       }
     }
+  }
 
-    const [
-      bootstrapRaw,
-      matchesRaw,
-      pbaMatchesRaw,
-      scoresLiveRaw,
-      scoresTodayRaw,
-      livestreamRaw,
-      espnRaw,
-      espnTodayRaw,
-      espnNewsRaw,
-      espnCollegeRaw,
-      normalizedHubRes
-    ] = await Promise.all([
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.bootstrap}${querySuffix}`, 3500),
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.matches}${querySuffix}`, 3500),
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.pbaMatches}${querySuffix}`, 3500),
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresLive}${querySuffix}`, 3500),
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresToday}${querySuffix}`, 3500),
-      fetchJsonNoStore(`${PROXY_ENDPOINTS.livestream}${querySuffix}`, 3500),
-      fetchJsonNoStore(LIVE88_ENDPOINTS.espnScoreboard, 3000),
-      fetchJsonNoStore(espnTodayScoreboardUrl, 3000),
-      fetchJsonNoStore(LIVE88_ENDPOINTS.espnNbaNews, 3000),
-      fetchJsonNoStore(LIVE88_ENDPOINTS.espnCollegeScoreboard, 3000),
-      fetchJsonNoStore(`/api/ph-sports${force ? '?refresh=true' : ''}`, 3500)
-    ]);
-
-    const espnNbaEntries = [
-      ...parseEspnScoreboard(espnTodayRaw, espnNewsRaw),
-      ...parseEspnScoreboard(espnRaw, espnNewsRaw)
-    ];
-    const espnList = [
-      ...espnNbaEntries,
-      ...parseEspnScoreboard(espnCollegeRaw)
-    ];
-
-    if (bootstrapRaw?.data) {
-      bootstrapConfig.value = {
-        liveCount: Number(bootstrapRaw.data.liveCount || 0),
-        leaguesCount: Array.isArray(bootstrapRaw.data.leagues) ? bootstrapRaw.data.leagues.length : 0
-      };
+  if (Array.isArray(latestNormalizedHubRes?.liveMatches)) {
+    for (const lm of latestNormalizedHubRes.liveMatches) {
+      if (lm?.id) authoritativeLiveIds.add(String(lm.id));
     }
+  }
 
-    const authoritativeLiveIds = new Set<string>();
-    const isFreshValidLiveItem = (item: any): boolean => {
-      if (!item?.id) return false;
-      if (String(item.clock || '').toUpperCase() === 'FT') return false;
-      const h = String(item.home?.name || item.homeName || '').trim();
-      const a = String(item.away?.name || item.awayName || '').trim();
-      const comp = String(item.competition || item.streamLabel || '').trim();
-      if (!isValidBasketballMatchup(h, a, comp, item.sport)) return false;
-      const startMs = new Date(item.startTime || '').getTime();
-      const ageHours = !Number.isNaN(startMs) ? (Date.now() - startMs) / (3600 * 1000) : 0;
-      return ageHours <= 4;
-    };
+  const mergedMap = new Map<string, PhSportsMatch>();
 
-    const rawScoresLiveList = Array.isArray(scoresLiveRaw?.data?.results)
-      ? scoresLiveRaw.data.results
-      : Array.isArray(scoresLiveRaw?.data)
-      ? scoresLiveRaw.data
-      : [];
-    for (const item of rawScoresLiveList) {
-      if (isFreshValidLiveItem(item)) {
-        authoritativeLiveIds.add(String(item.id));
+  const findMatchKey = (candidate: PhSportsMatch): string | undefined => {
+    if (mergedMap.has(candidate.id)) return candidate.id;
+    const hName = getCanonicalTeamName(candidate.home?.name || '').toLowerCase().trim();
+    const aName = getCanonicalTeamName(candidate.away?.name || '').toLowerCase().trim();
+    if (!hName || !aName) return undefined;
+    for (const [k, existing] of mergedMap.entries()) {
+      if (!isSameGameDay(existing.startTime, candidate.startTime)) continue;
+      const eh = getCanonicalTeamName(existing.home?.name || '').toLowerCase().trim();
+      const ea = getCanonicalTeamName(existing.away?.name || '').toLowerCase().trim();
+      if ((eh === hName && ea === aName) || (teamsMatch(eh, hName) && teamsMatch(ea, aName))) {
+        return k;
       }
     }
+    return undefined;
+  };
 
-    const rawScoresTodayList = Array.isArray(scoresTodayRaw?.data?.results)
-      ? scoresTodayRaw.data.results
-      : Array.isArray(scoresTodayRaw?.data)
-      ? scoresTodayRaw.data
-      : [];
-    for (const item of rawScoresTodayList) {
-      if (item?.status === 'live' && isFreshValidLiveItem(item)) {
-        authoritativeLiveIds.add(String(item.id));
-      }
+  // Seed with existing SSR/cached matches so incremental updates never blank out available matches
+  for (const existingMatch of allMatchesList.value) {
+    if (existingMatch?.id) {
+      mergedMap.set(existingMatch.id, applyEspnFallbackToMatch(existingMatch, espnList));
     }
+  }
 
-    const streamLookup = new Map<string, { url: string; type: string; label: string }[]>();
-    const rawLivestreamList = Array.isArray(livestreamRaw?.data?.results)
-      ? livestreamRaw.data.results
-      : Array.isArray(livestreamRaw?.data)
-      ? livestreamRaw.data
-      : [];
+  const rawPbaList = Array.isArray(latestPbaMatchesRaw?.data)
+    ? latestPbaMatchesRaw.data
+    : Array.isArray(latestPbaMatchesRaw?.data?.matches)
+    ? latestPbaMatchesRaw.data.matches
+    : [];
 
-    for (const item of rawLivestreamList) {
-      if (isFreshValidLiveItem(item)) {
-        authoritativeLiveIds.add(String(item.id));
+  const rawBootstrapMatches = Array.isArray(latestBootstrapRaw?.data?.matches) ? latestBootstrapRaw.data.matches : [];
+  const rawMatchesList = Array.isArray(latestMatchesRaw?.data)
+    ? latestMatchesRaw.data
+    : Array.isArray(latestMatchesRaw?.data?.matches)
+    ? latestMatchesRaw.data.matches
+    : [];
+
+  const rawPools: { item: any; isLivestream: boolean }[] = [
+    ...rawBootstrapMatches.map((item: any) => ({ item, isLivestream: false })),
+    ...rawMatchesList.map((item: any) => ({ item, isLivestream: false })),
+    ...rawPbaList.map((item: any) => ({ item, isLivestream: false })),
+    ...rawScoresTodayList.map((item: any) => ({ item, isLivestream: false })),
+    ...rawScoresLiveList.map((item: any) => ({ item, isLivestream: false })),
+    ...rawLivestreamList.map((item: any) => ({ item, isLivestream: true }))
+  ];
+
+  for (const entry of rawPools) {
+    const mapped = mapRawMatch(entry.item, streamLookup, espnList, authoritativeLiveIds, entry.isLivestream);
+    if (!mapped) continue;
+    const existingKey = findMatchKey(mapped);
+    if (existingKey) {
+      const prev = mergedMap.get(existingKey)!;
+      const merged = mergeClientMatches(prev, mapped, espnList, authoritativeLiveIds);
+      if (merged.id !== existingKey) {
+        mergedMap.delete(existingKey);
       }
-      if (!item || !Array.isArray(item.sources)) continue;
-      const validSources = item.sources
-        .filter((s: any) => s && (s.url || s.streamUrl))
-        .map((s: any) => {
-          const u = String(s.url || s.streamUrl).trim();
-          return {
-            url: u,
-            type: u.includes('.m3u8') ? 'hls' : u.includes('.flv') ? 'flv' : String(s.type || 'flv'),
-            label: String(s.label || 'Live88 Stream')
-          };
-        });
-      if (validSources.length > 0) {
-        if (item.id) streamLookup.set(String(item.id), validSources);
-        const hName = getCanonicalTeamName(String(item.home?.name || '')).toLowerCase().trim();
-        const aName = getCanonicalTeamName(String(item.away?.name || '')).toLowerCase().trim();
-        if (hName && aName) {
-          streamLookup.set(`${hName}__${aName}`, validSources);
-        }
-      }
+      mergedMap.set(merged.id, merged);
+    } else {
+      mergedMap.set(mapped.id, mapped);
     }
+  }
 
-    if (Array.isArray(normalizedHubRes?.liveMatches)) {
-      for (const lm of normalizedHubRes.liveMatches) {
-        if (lm?.id) authoritativeLiveIds.add(String(lm.id));
+  if (latestNormalizedHubRes?.allMatches && Array.isArray(latestNormalizedHubRes.allMatches)) {
+    for (const sm of latestNormalizedHubRes.allMatches) {
+      if (sm?.status === 'live' && sm?.id) {
+        authoritativeLiveIds.add(String(sm.id));
       }
-    }
-
-    const mergedMap = new Map<string, PhSportsMatch>();
-
-    const findMatchKey = (candidate: PhSportsMatch): string | undefined => {
-      if (mergedMap.has(candidate.id)) return candidate.id;
-      const hName = getCanonicalTeamName(candidate.home?.name || '').toLowerCase().trim();
-      const aName = getCanonicalTeamName(candidate.away?.name || '').toLowerCase().trim();
-      if (!hName || !aName) return undefined;
-      for (const [k, existing] of mergedMap.entries()) {
-        if (!isSameGameDay(existing.startTime, candidate.startTime)) continue;
-        const eh = getCanonicalTeamName(existing.home?.name || '').toLowerCase().trim();
-        const ea = getCanonicalTeamName(existing.away?.name || '').toLowerCase().trim();
-        if ((eh === hName && ea === aName) || (teamsMatch(eh, hName) && teamsMatch(ea, aName))) {
-          return k;
-        }
-      }
-      return undefined;
-    };
-
-    const rawPbaList = Array.isArray(pbaMatchesRaw?.data)
-      ? pbaMatchesRaw.data
-      : Array.isArray(pbaMatchesRaw?.data?.matches)
-      ? pbaMatchesRaw.data.matches
-      : [];
-
-    const rawBootstrapMatches = Array.isArray(bootstrapRaw?.data?.matches) ? bootstrapRaw.data.matches : [];
-    const rawMatchesList = Array.isArray(matchesRaw?.data)
-      ? matchesRaw.data
-      : Array.isArray(matchesRaw?.data?.matches)
-      ? matchesRaw.data.matches
-      : [];
-
-    const rawPools: { item: any; isLivestream: boolean }[] = [
-      ...rawBootstrapMatches.map((item: any) => ({ item, isLivestream: false })),
-      ...rawMatchesList.map((item: any) => ({ item, isLivestream: false })),
-      ...rawPbaList.map((item: any) => ({ item, isLivestream: false })),
-      ...rawScoresTodayList.map((item: any) => ({ item, isLivestream: false })),
-      ...rawScoresLiveList.map((item: any) => ({ item, isLivestream: false })),
-      ...rawLivestreamList.map((item: any) => ({ item, isLivestream: true }))
-    ];
-
-    for (const entry of rawPools) {
-      const mapped = mapRawMatch(entry.item, streamLookup, espnList, authoritativeLiveIds, entry.isLivestream);
-      if (!mapped) continue;
-      const existingKey = findMatchKey(mapped);
+      const enriched = applyEspnFallbackToMatch(sm, espnList);
+      const existingKey = findMatchKey(enriched);
       if (existingKey) {
         const prev = mergedMap.get(existingKey)!;
-        const merged = mergeClientMatches(prev, mapped, espnList, authoritativeLiveIds);
+        const merged = mergeClientMatches(prev, enriched, espnList, authoritativeLiveIds);
         if (merged.id !== existingKey) {
           mergedMap.delete(existingKey);
         }
         mergedMap.set(merged.id, merged);
       } else {
-        mergedMap.set(mapped.id, mapped);
+        mergedMap.set(enriched.id, enriched);
       }
     }
+  }
 
-    if (normalizedHubRes?.allMatches && Array.isArray(normalizedHubRes.allMatches)) {
-      for (const sm of normalizedHubRes.allMatches) {
-        if (sm?.status === 'live' && sm?.id) {
-          authoritativeLiveIds.add(String(sm.id));
-        }
-        const enriched = applyEspnFallbackToMatch(sm, espnList);
-        const existingKey = findMatchKey(enriched);
-        if (existingKey) {
-          const prev = mergedMap.get(existingKey)!;
-          const merged = mergeClientMatches(prev, enriched, espnList, authoritativeLiveIds);
-          if (merged.id !== existingKey) {
-            mergedMap.delete(existingKey);
-          }
-          mergedMap.set(merged.id, merged);
-        } else {
-          mergedMap.set(enriched.id, enriched);
-        }
-      }
+  for (const eg of espnNbaEntries) {
+    const canonicalHome = getCanonicalTeamName(eg.homeName);
+    const canonicalAway = getCanonicalTeamName(eg.awayName);
+    if (!isVerifiedNbaTeam(canonicalHome) || !isVerifiedNbaTeam(canonicalAway)) continue;
+
+    const status: 'live' | 'scheduled' | 'finished' =
+      eg.state === 'in' ? 'live' : eg.state === 'post' ? 'finished' : 'scheduled';
+    const espnMatch: PhSportsMatch = {
+      id: `espn-nba-${eg.id}`,
+      leagueId: 'nba',
+      competition: 'NBA',
+      sport: 'nba',
+      status,
+      clock: eg.clock || (status === 'finished' ? 'FT' : status === 'live' ? 'LIVE' : ''),
+      startTime: eg.startTime,
+      startTimeIso: eg.startTime,
+      manilaTimeFormatted: formatMatchDatePht({ startTime: eg.startTime }),
+      venue: eg.venue || 'Official NBA Arena',
+      streamLabel: 'NBA League Pass / NBA TV PH',
+      hasStream: false,
+      scoreAvailable: true,
+      homeScore: eg.homeScore,
+      awayScore: eg.awayScore,
+      bannerUrl: eg.actionThumbnail || undefined,
+      espnSpread: eg.spread || undefined,
+      espnOverUnder: eg.overUnder || undefined,
+      topPlayerName: eg.topPlayerName || undefined,
+      topPlayerStat: eg.topPlayerStat || undefined,
+      topPlayerHeadshot: eg.topPlayerHeadshot || undefined,
+      home: {
+        id: `espn-home-${eg.id}`,
+        name: canonicalHome,
+        shortName: canonicalHome.split(' ').pop() || canonicalHome,
+        initials: canonicalHome.slice(0, 3).toUpperCase(),
+        logo: resolveTeamLogoSync(canonicalHome, eg.homeLogo)
+      },
+      away: {
+        id: `espn-away-${eg.id}`,
+        name: canonicalAway,
+        shortName: canonicalAway.split(' ').pop() || canonicalAway,
+        initials: canonicalAway.slice(0, 3).toUpperCase(),
+        logo: resolveTeamLogoSync(canonicalAway, eg.awayLogo)
+      },
+      sources: []
+    };
+
+    const existingKey = findMatchKey(espnMatch);
+    if (!existingKey) {
+      mergedMap.set(espnMatch.id, espnMatch);
     }
+  }
 
-    // Also ensure all upcoming & recently completed ESPN NBA scoreboard games (Today + Next 7 Days) are included
-    for (const eg of espnNbaEntries) {
-      const canonicalHome = getCanonicalTeamName(eg.homeName);
-      const canonicalAway = getCanonicalTeamName(eg.awayName);
-      if (!isVerifiedNbaTeam(canonicalHome) || !isVerifiedNbaTeam(canonicalAway)) continue;
-
-      const status: 'live' | 'scheduled' | 'finished' =
-        eg.state === 'in' ? 'live' : eg.state === 'post' ? 'finished' : 'scheduled';
-      const espnMatch: PhSportsMatch = {
-        id: `espn-nba-${eg.id}`,
-        leagueId: 'nba',
-        competition: 'NBA',
-        sport: 'nba',
-        status,
-        clock: eg.clock || (status === 'finished' ? 'FT' : status === 'live' ? 'LIVE' : ''),
-        startTime: eg.startTime,
-        startTimeIso: eg.startTime,
-        manilaTimeFormatted: formatMatchDatePht({ startTime: eg.startTime }),
-        venue: eg.venue || 'Official NBA Arena',
-        streamLabel: 'NBA League Pass / NBA TV PH',
-        hasStream: false,
-        scoreAvailable: true,
-        homeScore: eg.homeScore,
-        awayScore: eg.awayScore,
-        bannerUrl: eg.actionThumbnail || undefined,
-        espnSpread: eg.spread || undefined,
-        espnOverUnder: eg.overUnder || undefined,
-        topPlayerName: eg.topPlayerName || undefined,
-        topPlayerStat: eg.topPlayerStat || undefined,
-        topPlayerHeadshot: eg.topPlayerHeadshot || undefined,
-        home: {
-          id: `espn-home-${eg.id}`,
-          name: canonicalHome,
-          shortName: canonicalHome.split(' ').pop() || canonicalHome,
-          initials: canonicalHome.slice(0, 3).toUpperCase(),
-          logo: resolveTeamLogoSync(canonicalHome, eg.homeLogo)
-        },
-        away: {
-          id: `espn-away-${eg.id}`,
-          name: canonicalAway,
-          shortName: canonicalAway.split(' ').pop() || canonicalAway,
-          initials: canonicalAway.slice(0, 3).toUpperCase(),
-          logo: resolveTeamLogoSync(canonicalAway, eg.awayLogo)
-        },
-        sources: []
-      };
-
-      const existingKey = findMatchKey(espnMatch);
-      if (!existingKey) {
-        mergedMap.set(espnMatch.id, espnMatch);
-      }
-    }
-
+  if (mergedMap.size > 0) {
     allMatchesList.value = Array.from(mergedMap.values());
-
-    // Trigger Tier 2 & 3 background image resolution via TheSportsDB + Wikipedia/Wikimedia Commons (cached in localStorage)
+    loading.value = false;
     enrichMatchesWithSportsDbAndWikipedia(allMatchesList.value);
+  }
 
-    lastUpdated.value = 'Synced PHT';
-
-    if (activeWatchSlug.value) {
-      const matchedWatch = allMatchesList.value.find(m => getMatchWatchSlug(m) === activeWatchSlug.value);
-      if (matchedWatch && (isInitialLoad || activeMatchId.value !== matchedWatch.id)) {
-        activeMatchId.value = matchedWatch.id;
-        attachStreamToPlayer(getStreamCandidatesForMatch(matchedWatch));
-        return;
-      }
+  if (activeWatchSlug.value) {
+    const matchedWatch = allMatchesList.value.find(m => getMatchWatchSlug(m) === activeWatchSlug.value);
+    if (matchedWatch && (isInitialLoad || activeMatchId.value !== matchedWatch.id)) {
+      activeMatchId.value = matchedWatch.id;
+      attachStreamToPlayer(getStreamCandidatesForMatch(matchedWatch));
+      return;
     }
+  }
 
-    if (isInitialLoad || !activeMatchId.value || currentLoadedStreamUrl.value === '/videos/basketball-live.webm' || !currentLoadedStreamUrl.value) {
-      const initialMatch =
-        allMatchesList.value.find(m => m.id === activeMatchId.value && m.sources && m.sources.length > 0) ||
-        allMatchesList.value.find(m => m.status === 'live' && m.sources && m.sources.length > 0) ||
-        allMatchesList.value.find(m => m.status === 'live') ||
-        allMatchesList.value[0];
+  if (isInitialLoad || !activeMatchId.value || currentLoadedStreamUrl.value === '/videos/basketball-live.webm' || !currentLoadedStreamUrl.value) {
+    const initialMatch =
+      allMatchesList.value.find(m => m.id === activeMatchId.value && m.sources && m.sources.length > 0) ||
+      allMatchesList.value.find(m => m.status === 'live' && m.sources && m.sources.length > 0) ||
+      allMatchesList.value.find(m => m.status === 'live') ||
+      allMatchesList.value[0];
 
-      if (initialMatch) {
-        if (!activeMatchId.value) {
-          activeMatchId.value = initialMatch.id;
-        }
-        attachStreamToPlayer(getStreamCandidatesForMatch(initialMatch));
+    if (initialMatch) {
+      if (!activeMatchId.value) {
+        activeMatchId.value = initialMatch.id;
       }
+      attachStreamToPlayer(getStreamCandidatesForMatch(initialMatch));
+    }
+  }
+}
+
+/**
+ * Separate stream metadata loading from score updates so slow livestream requests never delay scores.
+ */
+async function loadStreamMetadataInBackground(force = false, signal?: AbortSignal) {
+  if (isFetchingLivestream) return;
+  isFetchingLivestream = true;
+  try {
+    const querySuffix = force ? '&refresh=true' : '';
+    const lsData = await fetchJsonNoStore(`${PROXY_ENDPOINTS.livestream}${querySuffix}`, 2600, signal);
+    if (lsData && !signal?.aborted) {
+      latestLivestreamRaw = lsData;
+      reconcileMatchesState(false);
+    }
+  } finally {
+    isFetchingLivestream = false;
+  }
+}
+
+/**
+ * Lightweight score-only polling (every ~30s when tab is visible).
+ * Processes each score provider response as it arrives without triggering full feed or livestream refreshes.
+ */
+async function pollLiveScoresOnly(force = false) {
+  if (isPollingScores || isFetchingFullData) return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && !force) return;
+
+  isPollingScores = true;
+  const signal = activeFetchAbortController?.signal;
+  const querySuffix = force ? '&refresh=true' : '';
+  const { todayStr } = getEspnDateRangeParamsPht();
+  const espnTodayScoreboardUrl = `${LIVE88_ENDPOINTS.espnScoreboard}?dates=${todayStr}`;
+
+  try {
+    const tasks = [
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresLive}${querySuffix}`, 2800, signal).then(res => {
+        if (res && !signal?.aborted) {
+          latestScoresLiveRaw = res;
+          lastUpdated.value = formatLastUpdatedPht(new Date());
+          reconcileMatchesState(false);
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresToday}${querySuffix}`, 2800, signal).then(res => {
+        if (res && !signal?.aborted) {
+          latestScoresTodayRaw = res;
+          lastUpdated.value = formatLastUpdatedPht(new Date());
+          reconcileMatchesState(false);
+        }
+      }),
+      fetchJsonNoStore(espnTodayScoreboardUrl, 2800, signal).then(res => {
+        if (res && !signal?.aborted) {
+          latestEspnTodayRaw = res;
+          lastUpdated.value = formatLastUpdatedPht(new Date());
+          reconcileMatchesState(false);
+        }
+      })
+    ];
+    await Promise.allSettled(tasks);
+  } finally {
+    isPollingScores = false;
+  }
+}
+
+/**
+ * Full non-blocking background refresh on mount or manual refresh.
+ * Processes each provider response immediately as it arrives rather than blocking on Promise.all.
+ */
+async function fetchLive88Data(force = false, isInitialLoad = false) {
+  if (isFetchingFullData) return;
+  isFetchingFullData = true;
+
+  if (isInitialLoad && allMatchesList.value.length === 0) {
+    loading.value = true;
+  }
+  error.value = null;
+
+  const signal = activeFetchAbortController?.signal;
+  const querySuffix = force ? '&refresh=true' : '';
+  const { todayStr } = getEspnDateRangeParamsPht();
+  const espnTodayScoreboardUrl = `${LIVE88_ENDPOINTS.espnScoreboard}?dates=${todayStr}`;
+
+  let anyProviderSucceeded = false;
+  const markSuccessAndReconcile = () => {
+    if (signal?.aborted) return;
+    anyProviderSucceeded = true;
+    lastUpdated.value = formatLastUpdatedPht(new Date());
+    reconcileMatchesState(isInitialLoad);
+  };
+
+  try {
+    // Trigger stream metadata fetch independently in background so it never blocks score/match updates
+    void loadStreamMetadataInBackground(force, signal);
+
+    const scoreAndMatchTasks = [
+      fetchJsonNoStore(`/api/ph-sports${force ? '?refresh=true' : ''}`, 3200, signal).then(res => {
+        if (res && Array.isArray(res.allMatches) && res.allMatches.length > 0) {
+          latestNormalizedHubRes = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresLive}${querySuffix}`, 2800, signal).then(res => {
+        if (res) {
+          latestScoresLiveRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.scoresToday}${querySuffix}`, 2800, signal).then(res => {
+        if (res) {
+          latestScoresTodayRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.pbaMatches}${querySuffix}`, 3200, signal).then(res => {
+        if (res) {
+          latestPbaMatchesRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.matches}${querySuffix}`, 3200, signal).then(res => {
+        if (res) {
+          latestMatchesRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(`${PROXY_ENDPOINTS.bootstrap}${querySuffix}`, 3200, signal).then(res => {
+        if (res) {
+          latestBootstrapRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(espnTodayScoreboardUrl, 2800, signal).then(res => {
+        if (res) {
+          latestEspnTodayRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(LIVE88_ENDPOINTS.espnScoreboard, 2800, signal).then(res => {
+        if (res) {
+          latestEspnRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(LIVE88_ENDPOINTS.espnNbaNews, 2800, signal).then(res => {
+        if (res) {
+          latestEspnNewsRaw = res;
+          markSuccessAndReconcile();
+        }
+      }),
+      fetchJsonNoStore(LIVE88_ENDPOINTS.espnCollegeScoreboard, 2800, signal).then(res => {
+        if (res) {
+          latestEspnCollegeRaw = res;
+          markSuccessAndReconcile();
+        }
+      })
+    ];
+
+    await Promise.allSettled(scoreAndMatchTasks);
+
+    if (!anyProviderSucceeded && allMatchesList.value.length === 0 && !signal?.aborted) {
+      error.value = 'Unable to load Live88 sports feed';
     }
   } catch (err: any) {
-    console.error('Error polling Live88 endpoints:', err);
-    if (allMatchesList.value.length === 0) {
+    if (allMatchesList.value.length === 0 && !signal?.aborted) {
       error.value = err?.message || 'Unable to load Live88 sports feed';
     }
   } finally {
     loading.value = false;
+    isFetchingFullData = false;
+  }
+}
+
+function handleVisibilityChange() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    void pollLiveScoresOnly(false);
   }
 }
 
 onMounted(() => {
+  activeFetchAbortController = new AbortController();
   initImageResolverCache();
   if (typeof window !== 'undefined') {
-    window.addEventListener('message', handleIframeMessage);
     window.addEventListener('popstate', syncStateFromUrl);
   }
   if (typeof document !== 'undefined') {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
   }
   syncStateFromUrl();
-  fetchLive88Data(false, true);
 
-  // Automatic real-time polling interval every 15 seconds (no caching)
+  if (activeMatch.value) {
+    pendingCandidateUrls.value = getStreamCandidatesForMatch(activeMatch.value);
+  }
+
+  // Immediate non-blocking background refresh on mount while keeping SSR cached content visible
+  void fetchLive88Data(false, true);
+
+  // Visible-tab score polling every 30 seconds
   pollIntervalId = setInterval(() => {
-    fetchLive88Data(true, false);
-  }, 15000);
+    void pollLiveScoresOnly(false);
+  }, 30000);
 });
 
 onUnmounted(() => {
@@ -1646,13 +1513,16 @@ onUnmounted(() => {
     clearInterval(pollIntervalId);
     pollIntervalId = null;
   }
-  destroyStreamInstances();
+  if (activeFetchAbortController) {
+    activeFetchAbortController.abort();
+    activeFetchAbortController = null;
+  }
   if (typeof window !== 'undefined') {
-    window.removeEventListener('message', handleIframeMessage);
     window.removeEventListener('popstate', syncStateFromUrl);
   }
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
   }
 });
 
@@ -1759,7 +1629,6 @@ const filteredMatches = computed(() => {
 const predictionBlogs = computed<PredictionBlogArticle[]>(() => {
   void imageCacheVersion.value;
 
-  // Strictly filter for verified NBA and PBA matches only (completely exclude WNBA, Slovenia Cup, FIBA WBLA, MPBL, UAAP, NCAA, or 2024/old games)
   const upcomingNbaAndPba = allMatchesList.value.filter(
     m => isStrictNbaOrPbaMatch(m) && isUpcomingWithinNext7DaysPht(m)
   );
@@ -1809,7 +1678,6 @@ const highlightReports = computed<HighlightReportArticle[]>(() => {
   );
   const basePool = recentFinalNbaAndPba.length > 0 ? recentFinalNbaAndPba : allFinalNbaAndPba;
 
-  // Seed with images already used by predictionBlogs so no photo is ever shared across prediction & recap cards
   const usedReportImages = new Set<string>(predictionBlogs.value.map(p => p.bannerUrl));
 
   let reports = basePool.map(m => {
@@ -1940,7 +1808,7 @@ const activeReport = computed<HighlightReportArticle | null>(() => {
   return null;
 });
 
-// 5. Dynamic Head Metadata, Canonical Tags & Production JSON-LD Schema (SportsEvent, NewsArticle, BreadcrumbList, FAQPage, Organization)
+// 5. Dynamic Head Metadata, Canonical Tags & Production JSON-LD Schema
 const currentSeoMeta = computed(() => {
   if (activePrediction.value) {
     return {
@@ -2071,7 +1939,7 @@ const productionJsonLd = computed(() => {
         name: 'How often are basketball live scores, odds, and box score reports updated?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'All NBA, PBA, MPBL, UAAP, and NCAA live scores, game clocks, betting spreads, and box score recaps are synchronized automatically every 15 seconds with zero caching.'
+          text: 'All NBA, PBA, MPBL, UAAP, and NCAA live scores, game clocks, betting spreads, and box score recaps are synchronized automatically with real-time feeds.'
         }
       }
     ]
@@ -2241,45 +2109,85 @@ watch(
 
 <template>
   <div class="bg-[#0b101e] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden text-slate-100">
-    <!-- 2. SANDBOXED IFRAME VIDEO PLAYER (Pause/Play & Fullscreen ONLY — No status bar below player) -->
+    <!-- 2. SANDBOXED IFRAME VIDEO PLAYER (Loaded on playback demand or /watch/ route) -->
     <div class="p-4 sm:p-6 bg-slate-950 border-b border-slate-800/90">
-      <div class="max-w-4xl mx-auto">
-        <div
-          ref="playerContainerRef"
-          class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-lg group select-none"
-        >
-          <iframe
-            ref="playerIframeRef"
-            sandbox="allow-scripts allow-same-origin"
-            referrerpolicy="no-referrer"
-            allow="autoplay; fullscreen"
-            title="TipOff PH Sandboxed Live Basketball Stream"
-            :srcdoc="iframePlayerSrcDoc"
-            @load="onIframePlayerLoaded"
-            class="w-full h-full border-0 bg-black block"
-          ></iframe>
+      <div ref="playerShellRef" class="max-w-4xl mx-auto">
+        <LiveStreamPlayer
+          v-if="playerActivated"
+          ref="livePlayerRef"
+          :candidate-urls="pendingCandidateUrls"
+          @state-change="handlePlayerStateChange"
+        />
 
-          <!-- ONLY TWO CUSTOM OVERLAY BUTTONS: Pause/Play and Fullscreen -->
-          <div
-            class="absolute inset-0 flex items-end justify-between p-4 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 pointer-events-none"
-            :class="{ 'opacity-100': !isPlaying }"
-          >
-            <!-- 1. Pause/Play Toggle Button -->
-            <button
-              type="button"
-              @click.stop="togglePlayPause"
-              class="pointer-events-auto w-10 h-10 rounded-lg bg-slate-900/85 hover:bg-red-600 text-white border border-white/20 flex items-center justify-center transition-all cursor-pointer shadow-md"
-              :aria-label="isPlaying ? 'Pause' : 'Play'"
-            >
-              <svg v-if="!isPlaying" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+        <!-- Lightweight Pre-Playback Shell (Preserves identical design & Play/Fullscreen controls without loading HLS/FLV until clicked) -->
+        <div
+          v-else
+          @click="activatePlayerAndPlay"
+          class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-lg group select-none cursor-pointer"
+        >
+          <div class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-gradient-to-b from-slate-950/60 via-slate-950/80 to-black">
+            <div v-if="activeMatch" class="flex items-center justify-center gap-4 sm:gap-8 mb-3">
+              <div class="flex flex-col items-center gap-1.5 max-w-[130px]">
+                <img
+                  :src="resolveTeamLogoSync(activeMatch.away.name, activeMatch.away.logo)"
+                  :alt="activeMatch.away.name"
+                  width="48"
+                  height="48"
+                  loading="eager"
+                  decoding="async"
+                  class="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow"
+                  @error="handleImageErrorToCrest($event, activeMatch.away.name)"
+                />
+                <span class="text-xs sm:text-sm font-bold text-white truncate max-w-full">{{ activeMatch.away.name }}</span>
+              </div>
+
+              <div class="flex flex-col items-center">
+                <span class="px-2 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase tracking-wider mb-1">
+                  {{ activeMatch.status === 'live' ? (activeMatch.clock || 'LIVE') : 'STREAM READY' }}
+                </span>
+                <span class="text-lg sm:text-2xl font-mono font-black text-amber-400">
+                  {{ activeMatch.awayScore }} – {{ activeMatch.homeScore }}
+                </span>
+              </div>
+
+              <div class="flex flex-col items-center gap-1.5 max-w-[130px]">
+                <img
+                  :src="resolveTeamLogoSync(activeMatch.home.name, activeMatch.home.logo)"
+                  :alt="activeMatch.home.name"
+                  width="48"
+                  height="48"
+                  loading="eager"
+                  decoding="async"
+                  class="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow"
+                  @error="handleImageErrorToCrest($event, activeMatch.home.name)"
+                />
+                <span class="text-xs sm:text-sm font-bold text-white truncate max-w-full">{{ activeMatch.home.name }}</span>
+              </div>
+            </div>
+
+            <div class="w-14 h-14 rounded-full bg-red-600/95 group-hover:bg-red-500 text-white flex items-center justify-center shadow-xl border border-white/20 transition-transform group-hover:scale-105">
+              <svg class="w-7 h-7 fill-current ml-0.5" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
-              <svg v-else class="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </div>
+            <span class="mt-2 text-xs font-bold text-slate-300 group-hover:text-white transition-colors">
+              Click to Play Live Stream
+            </span>
+          </div>
+
+          <!-- ONLY TWO CUSTOM OVERLAY BUTTONS: Pause/Play and Fullscreen -->
+          <div class="absolute inset-0 flex items-end justify-between p-4 bg-gradient-to-t from-black/65 via-transparent to-transparent pointer-events-none">
+            <button
+              type="button"
+              @click.stop="activatePlayerAndPlay"
+              class="pointer-events-auto w-10 h-10 rounded-lg bg-slate-900/85 hover:bg-red-600 text-white border border-white/20 flex items-center justify-center transition-all cursor-pointer shadow-md"
+              aria-label="Play"
+            >
+              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
               </svg>
             </button>
 
-            <!-- 2. Fullscreen Toggle Button -->
             <button
               type="button"
               @click.stop="toggleFullscreen"
@@ -2300,9 +2208,12 @@ watch(
 
     <!-- 3. SIMPLE RESPONSIVE PROMO BAR -->
     <div class="px-3.5 sm:px-5 py-2.5 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-      <div class="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-100">
+      <div class="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-100 flex-wrap">
         <span class="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0"></span>
         <span>Live NBA &amp; PBA In-Play Odds Available Now</span>
+        <span v-if="lastUpdated" class="text-[11px] font-mono font-medium text-slate-400 sm:ml-2">
+          · {{ lastUpdated }}
+        </span>
       </div>
       <div class="flex items-center gap-2 w-full sm:w-auto">
         <a
@@ -2393,702 +2304,36 @@ watch(
     </div>
 
     <!-- ACTIVE INDIVIDUAL PRE-GAME PREDICTION BLOG VIEW -->
-    <div v-if="activePrediction" class="p-2.5 sm:p-6 bg-slate-950/60 border-b border-slate-800">
-      <article class="max-w-4xl mx-auto bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-xl">
-        <!-- Rule 3 Broadcast Thumbnail with Corner Overlays (League Tag, TipOff Ph Watermark, Away Logo, Home Logo) -->
-        <div class="relative min-h-[220px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-          <img
-            :src="activePrediction.bannerUrl"
-            :alt="`${activePrediction.awayTeam} vs ${activePrediction.homeTeam} ${activePrediction.league} Prediction Odds & Picks`"
-            width="1280"
-            height="720"
-            loading="lazy"
-            decoding="async"
-            referrerpolicy="no-referrer"
-            @error="handleBannerImageError($event, activePrediction.awayTeam, activePrediction.homeTeam, activePrediction.league)"
-            class="absolute inset-0 w-full h-full object-cover opacity-80"
-          />
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
+    <PredictionDetailView
+      v-if="activePrediction"
+      :prediction="activePrediction"
+      :all-predictions-href="getSeoTabHref('predictions')"
+      @close="closePredictionBlog(true)"
+    />
 
-          <div class="relative z-10 p-3 sm:p-5 flex flex-col justify-between gap-3 flex-1">
-            <!-- Top Corners: League Tag Badge (Top-Left) + TipOff Ph Watermark & Back Link (Top-Right) -->
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5">
-                <span class="px-2.5 py-1 rounded bg-amber-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
-                  {{ activePrediction.badge }}
-                </span>
-              </div>
+    <!-- ACTIVE INDIVIDUAL POST-GAME HIGHLIGHT & SHORT RECAP BLOG VIEW -->
+    <ReportDetailView
+      v-else-if="activeReport"
+      :report="activeReport"
+      :all-reports-href="getSeoTabHref('highlights')"
+      @close="closeHighlightReport(true)"
+    />
 
-              <div class="flex items-center gap-2">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 border border-amber-400/40 text-[10px] sm:text-xs font-black text-amber-300 shadow">
-                  <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3.5 h-3.5 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                  <span>TipOff Ph</span>
-                </span>
-                <a
-                  :href="getSeoTabHref('predictions')"
-                  @click.prevent="closePredictionBlog(true)"
-                  class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
-                >
-                  <ArrowLeft class="w-3.5 h-3.5" />
-                  <span>All Predictions</span>
-                </a>
-              </div>
-            </div>
+    <!-- DEDICATED TAB 1: PREDICTIONS & PICKS TAB VIEW -->
+    <PredictionsTabView
+      v-else-if="selectedLeague === 'predictions'"
+      :prediction-blogs="predictionBlogs"
+      @open-prediction="openPredictionBySlug($event, true)"
+    />
 
-            <!-- Bottom Corners: Official Away Logo (Bottom-Left), Score/Time Bug (Center), Official Home Logo (Bottom-Right) -->
-            <div class="flex items-end justify-between gap-2 pt-6">
-              <div class="flex items-center gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[42%]">
-                <img
-                  :src="activePrediction.awayLogo"
-                  :alt="`${activePrediction.awayTeam} Official Logo`"
-                  width="48"
-                  height="48"
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                  @error="handleImageErrorToCrest($event, activePrediction.awayTeam)"
-                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
-                />
-                <div class="min-w-0">
-                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Away</div>
-                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activePrediction.awayTeam }}</div>
-                </div>
-              </div>
-
-              <div class="flex flex-col items-center justify-center text-center px-2.5 py-1.5 rounded-xl bg-slate-950/90 border border-amber-400/40 shrink-0">
-                <span class="text-[10px] font-black uppercase tracking-widest text-amber-400">VS · {{ activePrediction.league }}</span>
-                <span class="text-[11px] sm:text-xs font-mono font-bold text-white whitespace-nowrap">{{ activePrediction.matchDatePHT }}</span>
-              </div>
-
-              <div class="flex items-center justify-end gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[42%] text-right">
-                <div class="min-w-0">
-                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Home</div>
-                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activePrediction.homeTeam }}</div>
-                </div>
-                <img
-                  :src="activePrediction.homeLogo"
-                  :alt="`${activePrediction.homeTeam} Official Logo`"
-                  width="48"
-                  height="48"
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                  @error="handleImageErrorToCrest($event, activePrediction.homeTeam)"
-                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-3.5 sm:p-7 space-y-4 sm:space-y-5">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider">
-              {{ activePrediction.badge }}
-            </span>
-            <span class="text-xs text-slate-400 font-medium">{{ activePrediction.venue }}</span>
-          </div>
-
-          <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
-            {{ activePrediction.headline }}
-          </h3>
-
-          <!-- Rule 1 Betting Tale of the Tape Table: Tip-Off Time (PHT), Spread, Over/Under Total, Projected Win Probability % -->
-          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
-            <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
-              Betting Tale of the Tape
-            </div>
-            <table class="w-full text-left text-xs sm:text-sm font-mono tabular-nums">
-              <tbody class="divide-y divide-slate-800/80">
-                <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
-                  <td class="py-2 text-right font-bold text-slate-100">{{ activePrediction.taleOfTheTape.tipOffTimePht }}</td>
-                </tr>
-                <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Spread</th>
-                  <td class="py-2 text-right font-bold text-amber-400">{{ activePrediction.taleOfTheTape.spread }}</td>
-                </tr>
-                <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Over/Under Total</th>
-                  <td class="py-2 text-right font-bold text-cyan-300">{{ activePrediction.taleOfTheTape.overUnder }}</td>
-                </tr>
-                <tr>
-                  <th class="py-2 pr-2 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
-                  <td class="py-2 text-right font-bold text-emerald-400">{{ activePrediction.taleOfTheTape.winProbability }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- 2-Paragraph Pre-Game Analysis -->
-          <div class="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
-            <p v-for="(para, idx) in activePrediction.paragraphs" :key="idx">
-              {{ para }}
-            </p>
-          </div>
-
-          <!-- Rule 1: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
-          <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p class="text-xs sm:text-base font-extrabold text-white leading-snug">
-                Lock in live {{ activePrediction.league }} odds for {{ activePrediction.awayTeam }} vs {{ activePrediction.homeTeam }}
-              </p>
-              <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                Official {{ activePrediction.league }} spreads, totals, and live in-play markets in PHT.
-              </p>
-            </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
-              >
-                Bet Now
-              </a>
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
-              >
-                Play Now
-              </a>
-            </div>
-          </div>
-        </div>
-      </article>
-    </div>
-
-    <!-- ACTIVE INDIVIDUAL POST-GAME HIGHLIGHT & SHORT RECAP BLOG VIEW (Text-Only, No Video) -->
-    <div v-else-if="activeReport" class="p-2.5 sm:p-6 bg-slate-950/60 border-b border-slate-800">
-      <article class="max-w-4xl mx-auto bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-xl">
-        <!-- Rule 3 Broadcast Thumbnail with Corner Overlays (League Tag, TipOff Ph Watermark, Away Logo, Home Logo) -->
-        <div class="relative min-h-[220px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-          <img
-            :src="activeReport.bannerUrl"
-            :alt="`${activeReport.awayTeam} vs ${activeReport.homeTeam} ${activeReport.league} Game Highlights & Short Recap`"
-            width="1280"
-            height="720"
-            loading="lazy"
-            decoding="async"
-            referrerpolicy="no-referrer"
-            @error="handleBannerImageError($event, activeReport.awayTeam, activeReport.homeTeam, activeReport.league)"
-            class="absolute inset-0 w-full h-full object-cover opacity-80"
-          />
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
-
-          <div class="relative z-10 p-3.5 sm:p-5 flex flex-col justify-between gap-3 flex-1">
-            <!-- Top Corners: Badge & League Tag (Top-Left) + TipOff Ph Watermark & Back Link (Top-Right) -->
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5">
-                <span class="px-2.5 py-1 rounded bg-emerald-400 text-slate-950 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
-                  {{ activeReport.badge }}
-                </span>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 border border-amber-400/40 text-[10px] sm:text-xs font-black text-amber-300 shadow">
-                  <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3.5 h-3.5 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                  <span>TipOff Ph</span>
-                </span>
-                <a
-                  :href="getSeoTabHref('highlights')"
-                  @click.prevent="closeHighlightReport(true)"
-                  class="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-white bg-slate-900/90 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
-                >
-                  <ArrowLeft class="w-3.5 h-3.5" />
-                  <span>All Final Recaps</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Bottom Corners: Official Away Logo (Bottom-Left), Final Score Bug (Center), Official Home Logo (Bottom-Right) -->
-            <div class="flex items-end justify-between gap-2 pt-6">
-              <div class="flex items-center gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[40%]">
-                <img
-                  :src="activeReport.awayLogo"
-                  :alt="`${activeReport.awayTeam} Official Logo`"
-                  width="48"
-                  height="48"
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                  @error="handleImageErrorToCrest($event, activeReport.awayTeam)"
-                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
-                />
-                <div class="min-w-0">
-                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Away</div>
-                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activeReport.awayTeam }}</div>
-                </div>
-              </div>
-
-              <div class="flex flex-col items-center justify-center text-center px-3 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/40 shrink-0">
-                <span class="text-[10px] font-black uppercase tracking-widest text-emerald-400">FINAL</span>
-                <span class="text-sm sm:text-xl font-mono font-black text-white whitespace-nowrap">
-                  {{ activeReport.awayScore }} – {{ activeReport.homeScore }}
-                </span>
-              </div>
-
-              <div class="flex items-center justify-end gap-2 sm:gap-2.5 bg-slate-950/85 border border-slate-800/90 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-xs max-w-[40%] text-right">
-                <div class="min-w-0">
-                  <div class="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">Home</div>
-                  <div class="text-xs sm:text-sm font-black text-white leading-tight truncate">{{ activeReport.homeTeam }}</div>
-                </div>
-                <img
-                  :src="activeReport.homeLogo"
-                  :alt="`${activeReport.homeTeam} Official Logo`"
-                  width="48"
-                  height="48"
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                  @error="handleImageErrorToCrest($event, activeReport.homeTeam)"
-                  class="w-9 h-9 sm:w-12 sm:h-12 object-contain rounded-lg bg-white p-1 shadow shrink-0"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-3.5 sm:p-7 space-y-4 sm:space-y-5">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded bg-emerald-400 text-slate-950 text-xs font-black uppercase tracking-wider">
-              {{ activeReport.badge }}
-            </span>
-            <span class="text-xs text-slate-400 font-medium">{{ activeReport.venue }} · {{ activeReport.manilaTime }}</span>
-          </div>
-
-          <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
-            {{ activeReport.headline }}
-          </h3>
-
-          <!-- Rule 2 Short Punchy Recap (2 Paragraphs) -->
-          <div class="space-y-3 text-xs sm:text-sm text-slate-200 leading-relaxed">
-            <p v-for="(para, idx) in activeReport.paragraphs" :key="idx">
-              {{ para }}
-            </p>
-          </div>
-
-          <!-- Rule 2 Top Player Highlights (NBA top scorers/rebounders/assists OR PBA quarter-by-quarter team scoring breakdown) -->
-          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-2.5">
-            <h4 class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400">
-              Top Player Highlights ({{ activeReport.league }})
-            </h4>
-            <ul class="space-y-1.5 text-xs sm:text-sm text-slate-300 list-disc list-inside">
-              <li v-for="(pt, idx) in activeReport.topPlayerHighlights" :key="idx">{{ pt }}</li>
-            </ul>
-          </div>
-
-          <!-- Rule 2 Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
-          <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
-            <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Quarter-by-Quarter Box Score Table
-            </div>
-            <table class="w-full text-left text-xs sm:text-sm font-mono tabular-nums">
-              <thead>
-                <tr class="border-b border-slate-800 text-slate-400">
-                  <th class="py-2 pr-2 font-sans font-bold text-slate-300">Team</th>
-                  <th v-for="q in activeReport.quarters" :key="q.label" class="py-2 px-1.5 sm:px-2 text-center">{{ q.label }}</th>
-                  <th class="py-2 pl-2 text-right font-bold text-amber-400">FINAL</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/70">
-                <tr>
-                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[120px] sm:max-w-none">{{ activeReport.awayTeam }}</td>
-                  <td v-for="q in activeReport.quarters" :key="`a-${q.label}`" class="py-2 px-1.5 sm:px-2 text-center text-slate-300">{{ q.away }}</td>
-                  <td class="py-2 pl-2 text-right font-extrabold text-amber-400">{{ activeReport.awayScore }}</td>
-                </tr>
-                <tr>
-                  <td class="py-2 pr-2 font-sans font-bold text-white truncate max-w-[120px] sm:max-w-none">{{ activeReport.homeTeam }}</td>
-                  <td v-for="q in activeReport.quarters" :key="`h-${q.label}`" class="py-2 px-1.5 sm:px-2 text-center text-slate-300">{{ q.home }}</td>
-                  <td class="py-2 pl-2 text-right font-extrabold text-amber-400">{{ activeReport.homeScore }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Rule 2: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
-          <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p class="text-xs sm:text-base font-extrabold text-white leading-snug">
-                Ready for the next {{ activeReport.league }} tip-off? Get live basketball odds now
-              </p>
-              <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                Live NBA &amp; PBA spreads, totals, and in-play markets updated every possession.
-              </p>
-            </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
-              >
-                Bet Now
-              </a>
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="flex-1 sm:flex-initial text-center px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
-              >
-                Play Now
-              </a>
-            </div>
-          </div>
-        </div>
-      </article>
-    </div>
-
-    <!-- DEDICATED TAB 1: PREDICTIONS & PICKS TAB VIEW (STRICTLY NBA & PBA ONLY) -->
-    <div v-else-if="selectedLeague === 'predictions'" class="p-4 sm:p-6 space-y-5">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
-        <div>
-          <h2 class="text-base sm:text-lg font-black text-white">
-            NBA &amp; PBA Pre-Game Predictions, Odds &amp; Picks (Today + Next 7 Days PHT)
-          </h2>
-          <p class="text-xs text-slate-400 mt-0.5">
-            Strictly verified NBA and PBA pre-game predictions, Tale of the Tape betting odds, spreads, Over/Under totals, and projected win probabilities.
-          </p>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <article
-          v-for="pred in predictionBlogs"
-          :key="pred.slug"
-          class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl overflow-hidden flex flex-col justify-between transition-all group"
-        >
-          <div>
-            <!-- Rule 3 Thumbnail with Clean Corner Overlays (Away Logo, Home Logo, TipOff Ph Watermark, League Tag) -->
-            <div class="relative min-h-[195px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-              <img
-                :src="pred.bannerUrl"
-                :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks`"
-                width="800"
-                height="450"
-                loading="lazy"
-                decoding="async"
-                referrerpolicy="no-referrer"
-                @error="handleBannerImageError($event, pred.awayTeam, pred.homeTeam, pred.league)"
-                class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
-              />
-              <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
-
-              <div class="relative z-10 p-3 sm:p-3.5 flex flex-col justify-between gap-2 flex-1">
-                <!-- Top Corners: Badge (Top-Left) + TipOff Ph Watermark (Top-Right) -->
-                <div class="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold">
-                  <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase shadow truncate">{{ pred.badge }}</span>
-                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
-                    <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                    <span>TipOff Ph</span>
-                  </span>
-                </div>
-
-                <!-- Bottom Corners: Away Logo (Bottom-Left), VS/Time (Bottom-Center), Home Logo (Bottom-Right) -->
-                <div class="flex items-end justify-between gap-1.5 pt-6">
-                  <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%]">
-                    <img
-                      :src="pred.awayLogo"
-                      :alt="`${pred.awayTeam} Official Logo`"
-                      width="36"
-                      height="36"
-                      loading="lazy"
-                      decoding="async"
-                      referrerpolicy="no-referrer"
-                      @error="handleImageErrorToCrest($event, pred.awayTeam)"
-                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                    />
-                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.awayTeam }}</span>
-                  </div>
-
-                  <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-amber-400/35 shrink-0">
-                    <div class="text-[9px] font-black text-amber-400 uppercase">VS</div>
-                    <div class="text-[10px] font-mono font-bold text-slate-200 whitespace-nowrap">{{ pred.matchDatePHT }}</div>
-                  </div>
-
-                  <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%] text-right">
-                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.homeTeam }}</span>
-                    <img
-                      :src="pred.homeLogo"
-                      :alt="`${pred.homeTeam} Official Logo`"
-                      width="36"
-                      height="36"
-                      loading="lazy"
-                      decoding="async"
-                      referrerpolicy="no-referrer"
-                      @error="handleImageErrorToCrest($event, pred.homeTeam)"
-                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="p-4 sm:p-5 space-y-3.5">
-              <h3 class="text-base sm:text-lg font-black text-white leading-snug">
-                <a
-                  :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
-                  @click.prevent="openPredictionBySlug(pred.slug, true)"
-                  class="hover:text-amber-400 transition-colors"
-                >
-                  {{ pred.headline }}
-                </a>
-              </h3>
-
-              <!-- Rule 1 Betting Tale of the Tape Table -->
-              <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3">
-                <table class="w-full text-left text-xs font-mono tabular-nums">
-                  <tbody class="divide-y divide-slate-800/80">
-                    <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
-                      <td class="py-1.5 text-right font-bold text-slate-100">{{ pred.taleOfTheTape.tipOffTimePht }}</td>
-                    </tr>
-                    <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Spread</th>
-                      <td class="py-1.5 text-right font-bold text-amber-400">{{ pred.taleOfTheTape.spread }}</td>
-                    </tr>
-                    <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Over/Under Total</th>
-                      <td class="py-1.5 text-right font-bold text-cyan-300">{{ pred.taleOfTheTape.overUnder }}</td>
-                    </tr>
-                    <tr>
-                      <th class="py-1.5 pr-3 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
-                      <td class="py-1.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.winProbability }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- 2-Paragraph Pre-Game Analysis -->
-              <div class="space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">
-                <p v-for="(para, idx) in pred.paragraphs" :key="idx">{{ para }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Rule 1: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
-          <div class="px-4 sm:px-5 pb-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
-            <a
-              :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
-              @click.prevent="openPredictionBySlug(pred.slug, true)"
-              class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
-            >
-              Open Full Prediction &rarr;
-            </a>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
-              >
-                Bet Now
-              </a>
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
-              >
-                Play Now
-              </a>
-            </div>
-          </div>
-        </article>
-      </div>
-    </div>
-
-    <!-- DEDICATED TAB 2: NEWS & HIGHLIGHTS TAB VIEW (STRICTLY NBA & PBA FINAL RECAPS ONLY) -->
-    <div v-else-if="selectedLeague === 'highlights'" class="p-4 sm:p-6 space-y-5">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div>
-          <h2 class="text-base sm:text-lg font-black text-white">
-            NBA &amp; PBA Post-Game Highlight &amp; Short Recap Blogs (Last 48 Hours)
-          </h2>
-          <p class="text-xs text-slate-400 mt-0.5">
-            Text-only post-game short recaps, Top Player Highlights, and Quarter-by-Quarter (Q1–Q4 + FINAL) box score tables for completed NBA &amp; PBA games.
-          </p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-1.5">
-          <button
-            v-for="sub in [
-              { id: 'all', label: 'All Final Recaps' },
-              { id: 'nba', label: 'NBA Final Recaps' },
-              { id: 'pba', label: 'PBA Final Recaps' }
-            ]"
-            :key="sub.id"
-            type="button"
-            @click="blogSubFilter = sub.id as any"
-            class="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-            :class="blogSubFilter === sub.id
-              ? 'bg-amber-400 text-slate-950 font-black'
-              : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'"
-          >
-            {{ sub.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <article
-          v-for="rep in highlightReports"
-          :key="rep.slug"
-          class="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden flex flex-col justify-between transition-all group"
-        >
-          <div>
-            <!-- Rule 3 Thumbnail with Clean Corner Overlays (Away Logo, Home Logo, TipOff Ph Watermark, League Tag) -->
-            <div class="relative min-h-[195px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-              <img
-                :src="rep.bannerUrl"
-                :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Game Highlights & Short Recap`"
-                width="800"
-                height="450"
-                loading="lazy"
-                decoding="async"
-                referrerpolicy="no-referrer"
-                @error="handleBannerImageError($event, rep.awayTeam, rep.homeTeam, rep.league)"
-                class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
-              />
-              <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
-
-              <div class="relative z-10 p-3 sm:p-3.5 flex flex-col justify-between gap-2 flex-1">
-                <!-- Top Corners: Badge (Top-Left) + TipOff Ph Watermark (Top-Right) -->
-                <div class="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold">
-                  <span class="px-2 py-0.5 rounded bg-emerald-400 text-slate-950 font-black uppercase shadow truncate">{{ rep.badge }}</span>
-                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
-                    <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                    <span>TipOff Ph</span>
-                  </span>
-                </div>
-
-                <!-- Bottom Corners: Away Logo (Bottom-Left), Final Score (Bottom-Center), Home Logo (Bottom-Right) -->
-                <div class="flex items-end justify-between gap-1.5 pt-6">
-                  <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%]">
-                    <img
-                      :src="rep.awayLogo"
-                      :alt="`${rep.awayTeam} Official Logo`"
-                      width="36"
-                      height="36"
-                      loading="lazy"
-                      decoding="async"
-                      referrerpolicy="no-referrer"
-                      @error="handleImageErrorToCrest($event, rep.awayTeam)"
-                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                    />
-                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.awayTeam }}</span>
-                  </div>
-
-                  <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-emerald-400/35 shrink-0">
-                    <div class="text-[9px] font-black text-emerald-400 uppercase">FINAL</div>
-                    <div class="text-xs sm:text-sm font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
-                  </div>
-
-                  <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%] text-right">
-                    <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.homeTeam }}</span>
-                    <img
-                      :src="rep.homeLogo"
-                      :alt="`${rep.homeTeam} Official Logo`"
-                      width="36"
-                      height="36"
-                      loading="lazy"
-                      decoding="async"
-                      referrerpolicy="no-referrer"
-                      @error="handleImageErrorToCrest($event, rep.homeTeam)"
-                      class="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="p-4 sm:p-5 space-y-3.5">
-              <!-- Rule 2 Headline (<h3>): "[Winning Team] Defeat [Losing Team] [WinScore]–[LoseScore]: Game Highlights & Short Recap" -->
-              <h3 class="text-base sm:text-lg font-black text-white leading-snug">
-                <a
-                  :href="buildDualModeHref('report', rep.slug, '/local-sports')"
-                  @click.prevent="openReportBySlug(rep.slug, true)"
-                  class="hover:text-amber-400 transition-colors"
-                >
-                  {{ rep.headline }}
-                </a>
-              </h3>
-
-              <!-- Rule 2 Short Punchy Recap (2 Paragraphs) -->
-              <div class="space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">
-                <p v-for="(para, idx) in rep.paragraphs" :key="idx">{{ para }}</p>
-              </div>
-
-              <!-- Rule 2 Bulleted Top Player Highlights -->
-              <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 space-y-1.5">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                  Top Player Highlights ({{ rep.league }})
-                </div>
-                <ul class="space-y-1 text-xs text-slate-300 list-disc list-inside">
-                  <li v-for="(pt, idx) in rep.topPlayerHighlights" :key="idx">{{ pt }}</li>
-                </ul>
-              </div>
-
-              <!-- Rule 2 Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
-              <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3">
-                <table class="w-full text-left text-xs font-mono tabular-nums">
-                  <thead>
-                    <tr class="border-b border-slate-800 text-slate-400">
-                      <th class="py-1.5 pr-3 font-sans font-bold text-slate-300">Team</th>
-                      <th v-for="q in rep.quarters" :key="q.label" class="py-1.5 px-1.5 text-center">{{ q.label }}</th>
-                      <th class="py-1.5 pl-2 text-right font-bold text-amber-400">FINAL</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-800/70">
-                    <tr>
-                      <td class="py-1.5 pr-3 font-sans font-bold text-white">{{ rep.awayTeam }}</td>
-                      <td v-for="q in rep.quarters" :key="`a-${q.label}`" class="py-1.5 px-1.5 text-center text-slate-300">{{ q.away }}</td>
-                      <td class="py-1.5 pl-2 text-right font-extrabold text-amber-400">{{ rep.awayScore }}</td>
-                    </tr>
-                    <tr>
-                      <td class="py-1.5 pr-3 font-sans font-bold text-white">{{ rep.homeTeam }}</td>
-                      <td v-for="q in rep.quarters" :key="`h-${q.label}`" class="py-1.5 px-1.5 text-center text-slate-300">{{ q.home }}</td>
-                      <td class="py-1.5 pl-2 text-right font-extrabold text-amber-400">{{ rep.homeScore }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- Rule 2: "Bet Now" and "Play Now" buttons linking to https://tipoff.bybetcasino.ph/c6Yv/ -->
-          <div class="px-4 sm:px-5 pb-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
-            <a
-              :href="buildDualModeHref('report', rep.slug, '/local-sports')"
-              @click.prevent="openReportBySlug(rep.slug, true)"
-              class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
-            >
-              View Full Recap &rarr;
-            </a>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors whitespace-nowrap"
-              >
-                Bet Now
-              </a>
-              <a
-                :href="PROMO_URL"
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                class="px-3 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
-              >
-                Play Now
-              </a>
-            </div>
-          </div>
-        </article>
-      </div>
-    </div>
+    <!-- DEDICATED TAB 2: NEWS & HIGHLIGHTS TAB VIEW -->
+    <HighlightsTabView
+      v-else-if="selectedLeague === 'highlights'"
+      :highlight-reports="highlightReports"
+      :blog-sub-filter="blogSubFilter"
+      @update:blog-sub-filter="blogSubFilter = $event"
+      @open-report="openReportBySlug($event, true)"
+    />
 
     <!-- MAIN MATCH SCOREBOARD GRID + ALWAYS-VISIBLE CRAWLABLE SEO BLOG FEED BELOW -->
     <div v-else class="p-4 sm:p-6 space-y-8">
@@ -3256,334 +2501,13 @@ watch(
       </div>
 
       <!-- DUAL PLACEMENT: ALWAYS-VISIBLE, CRAWLABLE SEO BLOG FEED DIRECTLY BELOW MAIN MATCH GRID (STRICTLY NBA & PBA) -->
-      <section v-if="predictionBlogs.length > 0 || highlightReports.length > 0" class="pt-6 border-t border-slate-800 space-y-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 class="text-lg sm:text-xl font-black text-white tracking-tight">
-              Automated NBA &amp; PBA Pre-Game Predictions &amp; Post-Game Final Recaps
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">
-              Strictly verified NBA and PBA pre-game Tale of the Tape predictions and post-game Q1–Q4 box score recaps.
-            </p>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <a
-              :href="getSeoTabHref('predictions')"
-              @click.prevent="handleTabSelect('predictions', true)"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors"
-            >
-              All Predictions &amp; Picks
-            </a>
-            <a
-              :href="getSeoTabHref('highlights')"
-              @click.prevent="handleTabSelect('highlights', true)"
-              class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors"
-            >
-              All Final Recaps
-            </a>
-          </div>
-        </div>
-
-        <!-- Auto-Generated Pre-Game Prediction Articles (Strictly NBA & PBA Upcoming) -->
-        <div v-if="predictionBlogs.length > 0" class="space-y-3">
-          <div class="text-xs font-black uppercase tracking-wider text-amber-400">
-            NBA &amp; PBA Pre-Game Prediction Blogs (Today + Next 7 Days PHT)
-          </div>
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <article
-              v-for="pred in predictionBlogs.slice(0, 6)"
-              :key="`feed-pred-${pred.slug}`"
-              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between group"
-            >
-              <div>
-                <!-- Rule 3 Thumbnail with Clean Corner Overlays -->
-                <div class="relative min-h-[190px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-                  <img
-                    :src="pred.bannerUrl"
-                    :alt="`${pred.awayTeam} vs ${pred.homeTeam} ${pred.league} Prediction Odds & Picks`"
-                    width="800"
-                    height="450"
-                    loading="lazy"
-                    decoding="async"
-                    referrerpolicy="no-referrer"
-                    @error="handleBannerImageError($event, pred.awayTeam, pred.homeTeam, pred.league)"
-                    class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
-
-                  <div class="relative z-10 p-3 flex flex-col justify-between gap-2 flex-1">
-                    <!-- Top Corners -->
-                    <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
-                      <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase shadow truncate">{{ pred.badge }}</span>
-                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
-                        <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                        <span>TipOff Ph</span>
-                      </span>
-                    </div>
-
-                    <!-- Bottom Corners -->
-                    <div class="flex items-end justify-between gap-1.5 pt-6">
-                      <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%]">
-                        <img
-                          :src="pred.awayLogo"
-                          :alt="`${pred.awayTeam} Official Logo`"
-                          width="32"
-                          height="32"
-                          loading="lazy"
-                          decoding="async"
-                          referrerpolicy="no-referrer"
-                          @error="handleImageErrorToCrest($event, pred.awayTeam)"
-                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                        />
-                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.awayTeam }}</span>
-                      </div>
-
-                      <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-amber-400/35 shrink-0">
-                        <div class="text-[9px] font-black text-amber-400 uppercase">VS</div>
-                        <div class="text-[10px] font-mono font-bold text-slate-200 whitespace-nowrap">{{ pred.matchDatePHT }}</div>
-                      </div>
-
-                      <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[41%] text-right">
-                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ pred.homeTeam }}</span>
-                        <img
-                          :src="pred.homeLogo"
-                          :alt="`${pred.homeTeam} Official Logo`"
-                          width="32"
-                          height="32"
-                          loading="lazy"
-                          decoding="async"
-                          referrerpolicy="no-referrer"
-                          @error="handleImageErrorToCrest($event, pred.homeTeam)"
-                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="p-4 space-y-3">
-                  <h3 class="text-base font-extrabold text-white leading-snug">
-                    <a
-                      :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
-                      @click.prevent="openPredictionBySlug(pred.slug, true)"
-                      class="hover:text-amber-400 transition-colors"
-                    >
-                      {{ pred.headline }}
-                    </a>
-                  </h3>
-
-                  <table class="w-full text-left text-xs font-mono tabular-nums bg-slate-950 border border-slate-800 rounded-lg">
-                    <tbody class="divide-y divide-slate-800/80">
-                      <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Tip-Off Time (PHT)</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-slate-100">{{ pred.taleOfTheTape.tipOffTimePht }}</td>
-                      </tr>
-                      <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Spread</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-amber-400">{{ pred.taleOfTheTape.spread }}</td>
-                      </tr>
-                      <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Over/Under Total</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-cyan-300">{{ pred.taleOfTheTape.overUnder }}</td>
-                      </tr>
-                      <tr>
-                        <th class="py-1.5 px-2.5 font-sans font-semibold text-slate-400">Projected Win Probability %</th>
-                        <td class="py-1.5 px-2.5 text-right font-bold text-emerald-400">{{ pred.taleOfTheTape.winProbability }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  <div class="space-y-1.5 text-xs text-slate-300 leading-relaxed">
-                    <p v-for="(para, idx) in pred.paragraphs" :key="idx">{{ para }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
-                <a
-                  :href="buildDualModeHref('prediction', pred.slug, '/local-sports')"
-                  @click.prevent="openPredictionBySlug(pred.slug, true)"
-                  class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
-                >
-                  Read Full Prediction &rarr;
-                </a>
-                <div class="flex items-center gap-1.5">
-                  <a
-                    :href="PROMO_URL"
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950"
-                  >
-                    Bet Now
-                  </a>
-                  <a
-                    :href="PROMO_URL"
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white"
-                  >
-                    Play Now
-                  </a>
-                </div>
-              </div>
-            </article>
-          </div>
-        </div>
-
-        <!-- Auto-Generated Post-Game Highlight Reports (Strictly NBA & PBA Final Matches) -->
-        <div v-if="highlightReports.length > 0" class="space-y-3 pt-4">
-          <div class="text-xs font-black uppercase tracking-wider text-emerald-400">
-            NBA &amp; PBA Post-Game Highlight &amp; Short Recap Blogs (Last 48 Hours)
-          </div>
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <article
-              v-for="rep in highlightReports.slice(0, 6)"
-              :key="`feed-rep-${rep.slug}`"
-              class="bg-slate-900/75 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between group"
-            >
-              <div>
-                <!-- Rule 3 Thumbnail with Clean Corner Overlays -->
-                <div class="relative min-h-[190px] sm:aspect-video w-full bg-slate-950 overflow-hidden border-b border-slate-800 flex flex-col justify-between">
-                  <img
-                    :src="rep.bannerUrl"
-                    :alt="`${rep.awayTeam} vs ${rep.homeTeam} ${rep.league} Game Highlights & Short Recap`"
-                    width="800"
-                    height="450"
-                    loading="lazy"
-                    decoding="async"
-                    referrerpolicy="no-referrer"
-                    @error="handleBannerImageError($event, rep.awayTeam, rep.homeTeam, rep.league)"
-                    class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/25 to-slate-950/75"></div>
-
-                  <div class="relative z-10 p-3 flex flex-col justify-between gap-2 flex-1">
-                    <!-- Top Corners -->
-                    <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
-                      <span class="px-2 py-0.5 rounded bg-emerald-400 text-slate-950 font-black uppercase shadow truncate">{{ rep.badge }}</span>
-                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-amber-400/40 text-amber-300 font-black shadow shrink-0">
-                        <img src="/img/TipOffPh_logo.png" alt="TipOff Ph" class="w-3 h-3 object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'" />
-                        <span>TipOff Ph</span>
-                      </span>
-                    </div>
-
-                    <!-- Bottom Corners -->
-                    <div class="flex items-end justify-between gap-1.5 pt-6">
-                      <div class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%]">
-                        <img
-                          :src="rep.awayLogo"
-                          :alt="`${rep.awayTeam} Official Logo`"
-                          width="32"
-                          height="32"
-                          loading="lazy"
-                          decoding="async"
-                          referrerpolicy="no-referrer"
-                          @error="handleImageErrorToCrest($event, rep.awayTeam)"
-                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                        />
-                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.awayTeam }}</span>
-                      </div>
-
-                      <div class="text-center px-2 py-1 rounded-lg bg-slate-950/90 border border-emerald-400/35 shrink-0">
-                        <div class="text-[9px] font-black text-emerald-400 uppercase">FINAL</div>
-                        <div class="text-xs font-mono font-black text-white whitespace-nowrap">{{ rep.awayScore }} – {{ rep.homeScore }}</div>
-                      </div>
-
-                      <div class="flex items-center justify-end gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg px-2 py-1 max-w-[40%] text-right">
-                        <span class="text-[11px] font-bold text-white leading-tight truncate">{{ rep.homeTeam }}</span>
-                        <img
-                          :src="rep.homeLogo"
-                          :alt="`${rep.homeTeam} Official Logo`"
-                          width="32"
-                          height="32"
-                          loading="lazy"
-                          decoding="async"
-                          referrerpolicy="no-referrer"
-                          @error="handleImageErrorToCrest($event, rep.homeTeam)"
-                          class="w-7 h-7 object-contain rounded bg-white p-0.5 shadow shrink-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="p-4 space-y-3">
-                  <h3 class="text-base font-extrabold text-white leading-snug">
-                    <a
-                      :href="buildDualModeHref('report', rep.slug, '/local-sports')"
-                      @click.prevent="openReportBySlug(rep.slug, true)"
-                      class="hover:text-amber-400 transition-colors"
-                    >
-                      {{ rep.headline }}
-                    </a>
-                  </h3>
-
-                  <!-- 2-Paragraph Short Recap -->
-                  <div class="space-y-1.5 text-xs text-slate-300 leading-relaxed">
-                    <p v-for="(para, idx) in rep.paragraphs" :key="idx">{{ para }}</p>
-                  </div>
-
-                  <!-- Top Player Highlights Bullets -->
-                  <ul class="space-y-1 text-xs text-slate-300 list-disc list-inside bg-slate-950/90 border border-slate-800 rounded-lg p-2.5">
-                    <li v-for="(pt, idx) in rep.topPlayerHighlights" :key="idx">{{ pt }}</li>
-                  </ul>
-
-                  <!-- Quarter-by-Quarter Box Score Table (Q1, Q2, Q3, Q4, FINAL) -->
-                  <table class="w-full text-left text-xs font-mono tabular-nums bg-slate-950 border border-slate-800 rounded-lg">
-                    <thead>
-                      <tr class="border-b border-slate-800 text-slate-400">
-                        <th class="py-1 px-2 font-sans font-bold text-slate-300">Team</th>
-                        <th v-for="q in rep.quarters" :key="q.label" class="py-1 px-1.5 text-center">{{ q.label }}</th>
-                        <th class="py-1 px-2 text-right font-bold text-amber-400">FINAL</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-800/70">
-                      <tr>
-                        <td class="py-1 px-2 font-sans font-bold text-white">{{ rep.awayTeam }}</td>
-                        <td v-for="q in rep.quarters" :key="`a-${q.label}`" class="py-1 px-1.5 text-center text-slate-300">{{ q.away }}</td>
-                        <td class="py-1 px-2 text-right font-extrabold text-amber-400">{{ rep.awayScore }}</td>
-                      </tr>
-                      <tr>
-                        <td class="py-1 px-2 font-sans font-bold text-white">{{ rep.homeTeam }}</td>
-                        <td v-for="q in rep.quarters" :key="`h-${q.label}`" class="py-1 px-1.5 text-center text-slate-300">{{ q.home }}</td>
-                        <td class="py-1 px-2 text-right font-extrabold text-amber-400">{{ rep.homeScore }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="px-4 pb-3.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-950/60">
-                <a
-                  :href="buildDualModeHref('report', rep.slug, '/local-sports')"
-                  @click.prevent="openReportBySlug(rep.slug, true)"
-                  class="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
-                >
-                  Open Final Recap &rarr;
-                </a>
-                <div class="flex items-center gap-1.5">
-                  <a
-                    :href="PROMO_URL"
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-amber-400 hover:bg-amber-300 text-slate-950"
-                  >
-                    Bet Now
-                  </a>
-                  <a
-                    :href="PROMO_URL"
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    class="px-2.5 py-1 rounded text-[11px] font-black uppercase bg-red-600 hover:bg-red-500 text-white"
-                  >
-                    Play Now
-                  </a>
-                </div>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
+      <DualSeoBlogFeed
+        :prediction-blogs="predictionBlogs"
+        :highlight-reports="highlightReports"
+        @select-tab="handleTabSelect($event, true)"
+        @open-prediction="openPredictionBySlug($event, true)"
+        @open-report="openReportBySlug($event, true)"
+      />
     </div>
   </div>
 </template>

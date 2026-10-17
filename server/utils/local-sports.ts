@@ -8,6 +8,7 @@ import type {
 } from '../../shared/ph-sports-types';
 import { getTeamLogo, getTeamAccent, getTeamInitials, classifyMatchLeague, isVerifiedNbaTeam, isVerifiedPbaTeam, isValidBasketballMatchup, getCanonicalTeamName } from '../../shared/team-logos';
 import { registerEspnNewsArticles } from '../../shared/image-resolver';
+import { PRE_RENDERED_INITIAL_MATCHES } from '../../shared/seo-routing';
 
 export const SITE_KEY = '-Qw82foL4XnLt_vBp8LVXjwW';
 const BASE_URL = 'https://live88.eu.cc/api/v1';
@@ -360,9 +361,39 @@ interface CachedData {
   data: PhSportsResponse;
 }
 
+interface CachedAuxFeeds {
+  timestamp: number;
+  bootstrapJson: any;
+  matchesJson: any;
+  pbaMatchesJson: any;
+  signalsJson: any;
+  espnYesterdayJson: any;
+  espnTomorrowJson: any;
+  espnNewsJson: any;
+}
+
+interface CachedLivestreamData {
+  timestamp: number;
+  results: any[];
+}
+
+/**
+ * Documented Freshness & Stale-While-Revalidate Windows:
+ * - FRESH_TTL_MS (15s): Live scores and match states are considered fresh for 15 seconds.
+ * - STALE_TTL_MS (120s): Cached data up to 2 minutes old is served immediately while a background refresh runs.
+ * - AUX_CACHE_TTL_MS (180s): Expensive schedule/news/bootstrap feeds are cached for 3 minutes so lightweight score polls only hit live score endpoints.
+ * - STREAM_FRESH_TTL_MS (15s): Stream metadata cache window aligned with browser timeout budgets.
+ */
+export const FRESH_TTL_MS = 15 * 1000;
+export const STALE_TTL_MS = 120 * 1000;
+const AUX_CACHE_TTL_MS = 180 * 1000;
+const STREAM_FRESH_TTL_MS = 15 * 1000;
+
 let cachedSportsData: CachedData | null = null;
 let inFlightSportsPromise: Promise<PhSportsResponse> | null = null;
-const CACHE_TTL_MS = 10 * 1000;
+let cachedAuxFeeds: CachedAuxFeeds | null = null;
+let cachedLivestreamData: CachedLivestreamData | null = null;
+let inFlightStreamsPromise: Promise<any[]> | null = null;
 
 function normalizeFinishedScores(m: PhSportsMatch): { homeScore: number; awayScore: number } {
   const { homeScore: rawH, awayScore: rawA } = extractRawScores(m);
@@ -528,6 +559,36 @@ export function normalizeMatchClassification(
 
 let memoizedSeedMatches: PhSportsMatch[] | null = null;
 
+const manilaDateTimeFormatter = new Intl.DateTimeFormat('en-PH', {
+  timeZone: 'Asia/Manila',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
+});
+
+const manilaYmdFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+function isWithinRelevantDateWindow(m: any, maxAgeHours = 168): boolean {
+  const startIso = m?.startTime || m?.start_time;
+  if (!startIso) return true;
+  const startMs = new Date(startIso).getTime();
+  if (Number.isNaN(startMs)) return true;
+  const ageHours = (Date.now() - startMs) / (3600 * 1000);
+  // Retain Philippine league fixtures up to 14 days and global fixtures up to maxAgeHours (7 days)
+  const comp = String(m?.competition || m?.league || m?.streamLabel || '');
+  const isPh = /\bpba\b|\bmpbl\b|\buaap\b|\bncaa\b|gilas|pilipinas/i.test(comp) ||
+    isVerifiedPbaTeam(m?.home?.name || '') || isVerifiedPbaTeam(m?.away?.name || '');
+  const limit = isPh ? 336 : maxAgeHours;
+  return ageHours <= limit && ageHours >= -240;
+}
+
 function getSeedBasketballMatches(): PhSportsMatch[] {
   if (memoizedSeedMatches) return memoizedSeedMatches;
   try {
@@ -536,7 +597,8 @@ function getSeedBasketballMatches(): PhSportsMatch[] {
       const parsed: PhSportsResponse = JSON.parse(content);
       if (parsed && Array.isArray(parsed.allMatches)) {
         memoizedSeedMatches = parsed.allMatches
-          .filter(m => !String(m.id).startsWith('ph-') && !String(m.id).startsWith('nba-game-') && isLive88BasketballMatch(m))
+          .filter(m => !String(m.id).startsWith('ph-') && !String(m.id).startsWith('nba-game-') && isLive88BasketballMatch(m) && isWithinRelevantDateWindow(m))
+          .slice(0, 120)
           .map(m => ({
             ...m,
             status: m.status === 'live' ? 'finished' : m.status,
@@ -564,7 +626,8 @@ function loadLocalSportsDiskCache(): PhSportsResponse | null {
       const parsed: PhSportsResponse = JSON.parse(content);
       if (parsed && parsed.allMatches && parsed.allMatches.length > 0) {
         parsed.allMatches = parsed.allMatches
-          .filter(m => !String(m.id).startsWith('ph-') && !String(m.id).startsWith('nba-game-') && isLive88BasketballMatch(m))
+          .filter(m => !String(m.id).startsWith('ph-') && !String(m.id).startsWith('nba-game-') && isLive88BasketballMatch(m) && isWithinRelevantDateWindow(m))
+          .slice(0, 140)
           .map(m => normalizeMatchClassification({ ...m, sources: [], hasStream: false }));
         parsed.liveMatches = parsed.allMatches.filter(m => m.status === 'live');
         parsed.upcomingMatches = parsed.allMatches.filter(m => m.status === 'scheduled');
@@ -595,47 +658,184 @@ function formatManilaTime(isoString: string, status?: string, clock?: string): s
   try {
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return status === 'live' ? 'LIVE NOW' : 'TBA (Manila Time)';
-    return new Intl.DateTimeFormat('en-PH', {
-      timeZone: 'Asia/Manila',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }).format(d) + ' PHT';
+    return manilaDateTimeFormatter.format(d) + ' PHT';
   } catch {
     return status === 'live' ? 'LIVE NOW' : 'TBA';
   }
 }
 
-export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSportsResponse> {
+export async function fetchLive88StreamsOnly(forceRefresh = false): Promise<any[]> {
   const now = Date.now();
-  if (!forceRefresh && cachedSportsData && (now - cachedSportsData.timestamp < CACHE_TTL_MS) && cachedSportsData.data.allMatches.length > 0) {
-    return cachedSportsData.data;
+  if (!forceRefresh && cachedLivestreamData) {
+    if (now - cachedLivestreamData.timestamp >= STREAM_FRESH_TTL_MS && !inFlightStreamsPromise) {
+      void refreshLive88StreamsInBackground().catch(() => {});
+    }
+    return cachedLivestreamData.results;
   }
 
-  if (inFlightSportsPromise) {
-    return inFlightSportsPromise;
+  if (!forceRefresh && cachedSportsData && cachedSportsData.data.livestreams.length > 0) {
+    if (now - cachedSportsData.timestamp >= STREAM_FRESH_TTL_MS && !inFlightStreamsPromise) {
+      void refreshLive88StreamsInBackground().catch(() => {});
+    }
+    return cachedSportsData.data.livestreams;
   }
 
-  inFlightSportsPromise = (async () => {
-  try {
-    const fetchJsonWithTimeout = async (url: string, timeoutMs = 5500): Promise<any> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const isLive88 = url.includes('live88.eu.cc');
-        const res = await fetch(url, {
+  return refreshLive88StreamsInBackground();
+}
+
+async function refreshLive88StreamsInBackground(): Promise<any[]> {
+  if (inFlightStreamsPromise) {
+    return inFlightStreamsPromise;
+  }
+
+  inFlightStreamsPromise = (async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    try {
+      const fetchTask = (async () => {
+        const res = await fetch(URLS.livestream, {
           cache: 'no-store',
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'application/json',
-            ...(isLive88 ? { 'Origin': 'https://live88.eu.cc', 'Referer': 'https://live88.eu.cc/' } : {})
+            'Origin': 'https://live88.eu.cc',
+            'Referer': 'https://live88.eu.cc/'
           },
           signal: controller.signal
         });
         if (!res.ok) return null;
         return await res.json();
+      })();
+      const json = await Promise.race([
+        fetchTask,
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 2100))
+      ]);
+      if (json) {
+        const rawResults = Array.isArray(json?.data?.results)
+          ? json.data.results
+          : Array.isArray(json?.data)
+          ? json.data
+          : [];
+        const bballStreams = rawResults
+          .filter(isLive88BasketballMatch)
+          .map((item: any) => ({
+            ...item,
+            sport: item.sport === 'football' ? 'basketball' : item.sport
+          }));
+        cachedLivestreamData = {
+          timestamp: Date.now(),
+          results: bballStreams
+        };
+        return bballStreams;
+      }
+    } catch {
+      // Fall through to cached livestreams if upstream times out
+    } finally {
+      clearTimeout(timeoutId);
+      inFlightStreamsPromise = null;
+    }
+    return cachedLivestreamData?.results || cachedSportsData?.data?.livestreams || [];
+  })();
+
+  return inFlightStreamsPromise;
+}
+
+function buildInitialFallbackSportsResponse(): PhSportsResponse {
+  const all = PRE_RENDERED_INITIAL_MATCHES.map(m => normalizeMatchClassification({ ...m }));
+  const liveMatches = all.filter(m => m.status === 'live');
+  const upcomingMatches = all.filter(m => m.status === 'scheduled');
+  const recentMatches = all.filter(m => m.status === 'finished');
+  const livestreams = liveMatches.filter(m => (m.sources && m.sources.length > 0) || m.hasStream);
+  return {
+    source: 'Live88 Official Real-Time API (Cached Snapshot)',
+    timezone: 'Asia/Manila',
+    generatedAt: new Date().toISOString(),
+    counts: {
+      totalMatches: all.length,
+      pba: all.filter(m => m.leagueId === 'pba').length,
+      mpbl: all.filter(m => m.leagueId === 'mpbl').length,
+      collegiate: all.filter(m => m.leagueId === 'uaap' || m.leagueId === 'ncaa').length,
+      nba: all.filter(m => m.leagueId === 'nba').length,
+      activeLive: liveMatches.length,
+      streams: livestreams.length,
+      signals: 0
+    },
+    liveMatches,
+    upcomingMatches,
+    recentMatches,
+    allMatches: all,
+    livestreams,
+    signals: []
+  };
+}
+
+export async function fetchLocalSportsData(
+  forceRefresh = false,
+  mode: 'full' | 'scores' = 'full'
+): Promise<PhSportsResponse> {
+  const now = Date.now();
+
+  // Seed in-memory cache from disk (or pre-rendered fallback) on cold start so user requests never wait on external network calls
+  if (!cachedSportsData) {
+    const diskSeed = loadLocalSportsDiskCache() || buildInitialFallbackSportsResponse();
+    cachedSportsData = {
+      timestamp: now - (FRESH_TTL_MS + 1000),
+      data: diskSeed
+    };
+  }
+
+  if (!forceRefresh && cachedSportsData && cachedSportsData.data.allMatches.length > 0) {
+    const ageMs = now - cachedSportsData.timestamp;
+    if (ageMs >= FRESH_TTL_MS && !inFlightSportsPromise) {
+      // Always refresh in the background without blocking SSR or API responses
+      void executeSportsRefresh(mode, false).catch(() => {});
+    }
+    return cachedSportsData.data;
+  }
+
+  return executeSportsRefresh(mode, forceRefresh);
+}
+
+export async function triggerBackgroundSportsRefresh(
+  mode: 'full' | 'scores' = 'scores',
+  forceAuxRefresh = false
+): Promise<PhSportsResponse> {
+  return executeSportsRefresh(mode, forceAuxRefresh);
+}
+
+async function executeSportsRefresh(
+  mode: 'full' | 'scores' = 'full',
+  forceAuxRefresh = false
+): Promise<PhSportsResponse> {
+  if (inFlightSportsPromise) {
+    return inFlightSportsPromise;
+  }
+
+  const now = Date.now();
+  inFlightSportsPromise = (async () => {
+  try {
+    const fetchJsonWithTimeout = async (url: string, timeoutMs = 2500): Promise<any> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const isLive88 = url.includes('live88.eu.cc');
+        const fetchTask = (async () => {
+          const res = await fetch(url, {
+            cache: 'no-store',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+              ...(isLive88 ? { 'Origin': 'https://live88.eu.cc', 'Referer': 'https://live88.eu.cc/' } : {})
+            },
+            signal: controller.signal
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        })();
+        return await Promise.race([
+          fetchTask,
+          new Promise<null>(resolve => setTimeout(() => resolve(null), timeoutMs + 100))
+        ]);
       } catch {
         return null;
       } finally {
@@ -644,12 +844,7 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
     };
 
     const formatYmdPht = (d: Date): string => {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).formatToParts(d);
+      const parts = manilaYmdFormatter.formatToParts(d);
       const y = parts.find(p => p.type === 'year')?.value || '2026';
       const m = parts.find(p => p.type === 'month')?.value || '10';
       const day = parts.find(p => p.type === 'day')?.value || '16';
@@ -660,38 +855,57 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
     const yesterdayStr = formatYmdPht(new Date(nowDate.getTime() - 24 * 3600 * 1000));
     const tomorrowStr = formatYmdPht(new Date(nowDate.getTime() + 24 * 3600 * 1000));
 
-    // Fetch exact Live88 endpoints:
-    // 1. Bootstrap: https://live88.eu.cc/api/v1/bootstrap?site=-Qw82foL4XnLt_vBp8LVXjwW
-    // 2. Matches: https://live88.eu.cc/api/v1/matches?site=-Qw82foL4XnLt_vBp8LVXjwW
-    // 3. Livestream: https://live88.eu.cc/api/v1/livestream?site=-Qw82foL4XnLt_vBp8LVXjwW&segment=live
-    // + single-day ESPN NBA Scoreboard (returns HTTP 200 OK)
-    const [
-      bootstrapJson,
-      matchesJson,
-      pbaMatchesJson,
-      scoresLiveJson,
-      scoresTodayJson,
-      livestreamJson,
-      signalsJson,
-      espnDefaultJson,
-      espnTodayJson,
-      espnYesterdayJson,
-      espnTomorrowJson,
-      espnNewsJson
-    ] = await Promise.all([
-      fetchJsonWithTimeout(URLS.bootstrap, 6000),
-      fetchJsonWithTimeout(URLS.matches, 6000),
-      fetchJsonWithTimeout(URLS.pbaMatches, 5000),
-      fetchJsonWithTimeout(URLS.scoresLive, 4500),
-      fetchJsonWithTimeout(URLS.scoresToday, 4500),
-      fetchJsonWithTimeout(URLS.livestream, 5000),
-      fetchJsonWithTimeout(URLS.signals, 4000),
-      fetchJsonWithTimeout(ESPN_NBA_SCOREBOARD_URL, 3500),
-      fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${todayStr}`, 3500),
-      fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${yesterdayStr}`, 3500),
-      fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${tomorrowStr}`, 3500),
-      fetchJsonWithTimeout(ESPN_NBA_NEWS_URL, 3500)
+    // Reuse cached auxiliary feeds (bootstrap, full matches schedule, signals, ESPN news/adjacent days) when fresh or in lightweight 'scores' mode
+    const canReuseAux =
+      !forceAuxRefresh &&
+      cachedAuxFeeds !== null &&
+      (mode === 'scores' || (now - cachedAuxFeeds.timestamp < AUX_CACHE_TTL_MS));
+
+    const liveScorePromises = Promise.all([
+      fetchJsonWithTimeout(URLS.scoresLive, 2400),
+      fetchJsonWithTimeout(URLS.scoresToday, 2400),
+      fetchJsonWithTimeout(URLS.livestream, 2200),
+      fetchJsonWithTimeout(ESPN_NBA_SCOREBOARD_URL, 2400),
+      fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${todayStr}`, 2400)
     ]);
+
+    const auxPromises = canReuseAux
+      ? Promise.resolve([
+          cachedAuxFeeds!.bootstrapJson,
+          cachedAuxFeeds!.matchesJson,
+          cachedAuxFeeds!.pbaMatchesJson,
+          cachedAuxFeeds!.signalsJson,
+          cachedAuxFeeds!.espnYesterdayJson,
+          cachedAuxFeeds!.espnTomorrowJson,
+          cachedAuxFeeds!.espnNewsJson
+        ] as const)
+      : Promise.all([
+          fetchJsonWithTimeout(URLS.bootstrap, 3200),
+          fetchJsonWithTimeout(URLS.matches, 3200),
+          fetchJsonWithTimeout(URLS.pbaMatches, 2800),
+          fetchJsonWithTimeout(URLS.signals, 2500),
+          fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${yesterdayStr}`, 2500),
+          fetchJsonWithTimeout(`${ESPN_NBA_SCOREBOARD_URL}?dates=${tomorrowStr}`, 2500),
+          fetchJsonWithTimeout(ESPN_NBA_NEWS_URL, 2500)
+        ]);
+
+    const [
+      [scoresLiveJson, scoresTodayJson, livestreamJson, espnDefaultJson, espnTodayJson],
+      [bootstrapJson, matchesJson, pbaMatchesJson, signalsJson, espnYesterdayJson, espnTomorrowJson, espnNewsJson]
+    ] = await Promise.all([liveScorePromises, auxPromises]);
+
+    if (!canReuseAux && (bootstrapJson || matchesJson || pbaMatchesJson)) {
+      cachedAuxFeeds = {
+        timestamp: Date.now(),
+        bootstrapJson: bootstrapJson ?? cachedAuxFeeds?.bootstrapJson ?? null,
+        matchesJson: matchesJson ?? cachedAuxFeeds?.matchesJson ?? null,
+        pbaMatchesJson: pbaMatchesJson ?? cachedAuxFeeds?.pbaMatchesJson ?? null,
+        signalsJson: signalsJson ?? cachedAuxFeeds?.signalsJson ?? null,
+        espnYesterdayJson: espnYesterdayJson ?? cachedAuxFeeds?.espnYesterdayJson ?? null,
+        espnTomorrowJson: espnTomorrowJson ?? cachedAuxFeeds?.espnTomorrowJson ?? null,
+        espnNewsJson: espnNewsJson ?? cachedAuxFeeds?.espnNewsJson ?? null
+      };
+    }
 
     const bballMatchesJson = matchesJson;
 
@@ -796,6 +1010,13 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
         };
       });
 
+    if (liveStreamItems.length > 0) {
+      cachedLivestreamData = {
+        timestamp: Date.now(),
+        results: liveStreamItems
+      };
+    }
+
     // 2. Parse Bootstrap (https://live88.eu.cc/api/v1/bootstrap?site=-Qw82foL4XnLt_vBp8LVXjwW) & Matches (https://live88.eu.cc/api/v1/matches?site=-Qw82foL4XnLt_vBp8LVXjwW)
     const seedMatches: any[] = getSeedBasketballMatches();
     const bootstrapSignals: PhSportsSignal[] = extractArray(bootstrapJson?.data?.signals || bootstrapJson?.signals, ['signals', 'results']);
@@ -819,45 +1040,19 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
 
     const bootstrapMatches: any[] = [
       ...seedMatches,
-      ...extractArray(bootstrapJson, ['matches', 'results']).filter(isLive88BasketballMatch).map(mapPoolMatch)
+      ...extractArray(bootstrapJson, ['matches', 'results'])
+        .filter(m => isLive88BasketballMatch(m) && isWithinRelevantDateWindow(m))
+        .map(mapPoolMatch)
     ];
 
-    const allRawMatches: any[] = [
-      ...extractArray(matchesJson, ['matches', 'results']).filter(isLive88BasketballMatch).map(mapPoolMatch),
-      ...extractArray(bballMatchesJson, ['matches', 'results']).filter(isLive88BasketballMatch).map(mapPoolMatch)
-    ];
+    const allRawMatches: any[] = extractArray(matchesJson, ['matches', 'results'])
+      .filter(m => isLive88BasketballMatch(m) && isWithinRelevantDateWindow(m))
+      .map(mapPoolMatch);
 
     const extractedPba = [
       ...extractArray(pbaMatchesJson, ['matches', 'results']).filter(isLive88BasketballMatch),
       ...bootstrapMatches.filter(m => isVerifiedPbaTeam(m?.home?.name || '') && isVerifiedPbaTeam(m?.away?.name || ''))
     ];
-    const seenLivePbaTeams = new Set<string>();
-    const livePbaSorted = extractedPba
-      .filter(m => isVerifiedPbaTeam(m?.home?.name || '') && isVerifiedPbaTeam(m?.away?.name || ''))
-      .sort((a, b) => {
-        const aLive = a?.status === 'live' && String(a.clock || '').toUpperCase() !== 'FT' ? 1 : 0;
-        const bLive = b?.status === 'live' && String(b.clock || '').toUpperCase() !== 'FT' ? 1 : 0;
-        if (aLive !== bLive) return bLive - aLive;
-        return new Date(b.startTime || 0).getTime() - new Date(a.startTime || 0).getTime();
-      });
-
-    let pbaLiveAdded = 0;
-    for (const lp of livePbaSorted) {
-      const hCanon = getCanonicalTeamName(lp.home?.name || '');
-      const aCanon = getCanonicalTeamName(lp.away?.name || '');
-      if (seenLivePbaTeams.has(hCanon) || seenLivePbaTeams.has(aCanon)) continue;
-      seenLivePbaTeams.add(hCanon);
-      seenLivePbaTeams.add(aCanon);
-      if (lp?.id) {
-        authoritativeLiveIds.add(String(lp.id));
-        lp.status = 'live';
-        if (!lp.clock || lp.clock === 'FT' || is24HourTipoffClock(lp.clock)) {
-          lp.clock = pbaLiveAdded === 0 ? 'Q4 03:42' : 'Q3 05:18';
-        }
-        pbaLiveAdded++;
-        if (pbaLiveAdded >= 2) break;
-      }
-    }
 
     const pbaRawMatches: any[] = extractedPba.map(mapPoolMatch);
 
@@ -1103,51 +1298,6 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
       }
     }
 
-    // Ensure key Philippine leagues (PBA, MPBL, UAAP/NCAA) have active live coverage represented
-    const promoteRecentLeagueMatchesToLive = (
-      filterFn: (m: PhSportsMatch) => boolean,
-      targetCount: number,
-      defaultClocks: string[]
-    ) => {
-      const currentValues = Array.from(matchMap.values());
-      const existingLive = currentValues.filter(m => filterFn(m) && authoritativeLiveIds.has(m.id));
-      if (existingLive.length >= targetCount) return;
-
-      const usedTeams = new Set<string>();
-      for (const m of existingLive) {
-        usedTeams.add(getCanonicalTeamName(m.home.name));
-        usedTeams.add(getCanonicalTeamName(m.away.name));
-      }
-
-      const candidates = currentValues
-        .filter(m => filterFn(m) && !authoritativeLiveIds.has(m.id))
-        .sort((a, b) => {
-          const aHasSrc = Array.isArray(a.sources) && a.sources.length > 0 ? 1 : 0;
-          const bHasSrc = Array.isArray(b.sources) && b.sources.length > 0 ? 1 : 0;
-          if (aHasSrc !== bHasSrc) return bHasSrc - aHasSrc;
-          return new Date(b.startTime || 0).getTime() - new Date(a.startTime || 0).getTime();
-        });
-
-      let added = existingLive.length;
-      for (const cand of candidates) {
-        if (added >= targetCount) break;
-        const hCanon = getCanonicalTeamName(cand.home.name);
-        const aCanon = getCanonicalTeamName(cand.away.name);
-        if (usedTeams.has(hCanon) || usedTeams.has(aCanon)) continue;
-        usedTeams.add(hCanon);
-        usedTeams.add(aCanon);
-        authoritativeLiveIds.add(cand.id);
-        cand.status = 'live';
-        cand.clock = defaultClocks[added % defaultClocks.length] || 'Q4 03:42';
-        matchMap.set(cand.id, cand);
-        added++;
-      }
-    };
-
-    promoteRecentLeagueMatchesToLive(m => m.leagueId === 'pba', 2, ['Q4 03:42', 'Q3 05:18']);
-    promoteRecentLeagueMatchesToLive(m => m.leagueId === 'mpbl', 1, ['Q4 02:15']);
-    promoteRecentLeagueMatchesToLive(m => m.leagueId === 'uaap' || m.leagueId === 'ncaa', 1, ['Q3 06:24']);
-
     const allMerged = Array.from(matchMap.values()).map(m =>
       normalizeMatchClassification(m, espnLiveGames, authoritativeLiveIds)
     );
@@ -1207,8 +1357,9 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
       .sort((a, b) => {
         const tA = new Date(a.startTime || 0).getTime();
         const tB = new Date(b.startTime || 0).getTime();
-        const aRecent = tA >= new Date('2026-10-13T00:00:00Z').getTime() ? 1 : 0;
-        const bRecent = tB >= new Date('2026-10-13T00:00:00Z').getTime() ? 1 : 0;
+        const recentCutoff4d = Date.now() - 4 * 24 * 3600 * 1000;
+        const aRecent = tA >= recentCutoff4d ? 1 : 0;
+        const bRecent = tB >= recentCutoff4d ? 1 : 0;
         if (aRecent !== bRecent) return bRecent - aRecent;
         const lpA = getLeaguePriority(a);
         const lpB = getLeaguePriority(b);
@@ -1231,8 +1382,9 @@ export async function fetchLocalSportsData(forceRefresh = false): Promise<PhSpor
       .sort((a, b) => {
         const tA = new Date(a.startTime || 0).getTime();
         const tB = new Date(b.startTime || 0).getTime();
-        const aRecent = tA >= new Date('2026-10-10T00:00:00Z').getTime() ? 1 : 0;
-        const bRecent = tB >= new Date('2026-10-10T00:00:00Z').getTime() ? 1 : 0;
+        const recentCutoff7d = Date.now() - 7 * 24 * 3600 * 1000;
+        const aRecent = tA >= recentCutoff7d ? 1 : 0;
+        const bRecent = tB >= recentCutoff7d ? 1 : 0;
         if (aRecent !== bRecent) return bRecent - aRecent;
         const lpA = getLeaguePriority(a);
         const lpB = getLeaguePriority(b);

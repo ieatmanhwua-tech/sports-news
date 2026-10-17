@@ -60,9 +60,8 @@ function saveStorageMap(key: string, source: Map<string, string>) {
 }
 
 export function initImageResolverCache() {
-  if (typeof window === 'undefined') return;
-  if (memoryLogoCache.size === 0) loadStorageMap(STORAGE_KEY_LOGOS, memoryLogoCache);
-  if (memoryBannerCache.size === 0) loadStorageMap(STORAGE_KEY_BANNERS, memoryBannerCache);
+  // Deterministic no-op: do not populate memoryLogoCache from browser localStorage
+  // so SSR and client hydration always resolve identical logo URLs.
 }
 
 /**
@@ -414,12 +413,10 @@ export function handleImageErrorToCrest(event: Event, teamName: string) {
 export function handleBannerImageError(event: Event, awayTeam: string, homeTeam: string, league = 'BASKETBALL') {
   const img = event?.target as HTMLImageElement | null;
   if (!img) return;
-  if (!img.dataset.bingFallbackTried && !img.src.includes('tse1.mm.bing.net')) {
-    img.dataset.bingFallbackTried = '1';
-    img.src = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(awayTeam + ' vs ' + homeTeam + ' ' + league + ' basketball latest')}&w=800&h=450&c=7&rs=1&p=0`;
-    return;
+  const fallbackSvg = getSvgMatchupBanner(awayTeam, homeTeam, league);
+  if (img.src !== fallbackSvg) {
+    img.src = fallbackSvg;
   }
-  img.src = getSvgMatchupBanner(awayTeam, homeTeam, league);
 }
 
 /**
@@ -555,7 +552,6 @@ export function findExactMatchupOrTeamPhoto(
     (awayLower.includes(teamA) && homeLower.includes(teamB)) ||
     (awayLower.includes(teamB) && homeLower.includes(teamA));
 
-  // 1. Exact Dual-Team Matchup Photos (BOTH teams must be in the game)
   if (isNba) {
     if (hasBoth('nets', 'heat')) { const p = tryPick('/img/articles/nba-preseason-pred-bkn-mia.webp'); if (p) return p; }
     if (hasBoth('hornets', 'celtics')) { const p = tryPick('/img/articles/nba-preseason-pred-cha-bos.webp'); if (p) return p; }
@@ -576,7 +572,6 @@ export function findExactMatchupOrTeamPhoto(
     if (hasBoth('blazers', 'kings')) { const p = tryPick('/img/articles/nba-preseason-pred-por-sac.webp'); if (p) return p; }
     if (hasBoth('knicks', 'timberwolves')) { const p = tryPick('/img/articles/knicks-timberwolves-nba-preseason.webp'); if (p) return p; }
 
-    // Single-team NBA action photos (only if one of the two teams in the game is that exact NBA franchise)
     for (const side of [awayLower, homeLower]) {
       for (const asset of NBA_TEAM_ACTION_ASSETS) {
         if (asset.keywords.some(kw => side.includes(kw))) {
@@ -589,7 +584,6 @@ export function findExactMatchupOrTeamPhoto(
     }
   }
 
-  // 2. Philippine Leagues Exact Matchup Photos
   if (hasBoth('ginebra', 'nlex') || hasBoth('gin kings', 'road warriors')) {
     const p = tryPick('/img/articles/pba-ginebra-vs-nlex-araneta.jpg');
     if (p) return p;
@@ -625,22 +619,12 @@ export function findExactMatchupOrTeamPhoto(
 }
 
 /**
- * RULE 3: Real-Time Latest Image Fetcher (ESPN + PBA + Search/Social Latest Thumbnails)
- * Never reuses the same photo across multiple blog cards! Uses `usedImageUrls = new Set()` check
- * so every single blog post has a 100% unique, real photo:
- * 1. For NBA Blogs (ESPN Live Feed):
- *    - Pulls the exact game action photo from ESPN (`competitions[0].headlines?.[0]?.video?.[0]?.thumbnail`)
- *      or matching team article image from `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news`.
- * 2. For PBA Blogs & Missing Action Photos (Live Web/News/Social Image Search):
- *    - Queries the latest sports news & social media image thumbnail dynamically using the exact matchup query
- *      (`https://tse1.mm.bing.net/th?q=${encodeURIComponent(match.away_team + ' vs ' + match.home_team + ' ' + match.league + ' basketball latest')}&w=800&h=450&c=7&rs=1&p=0`).
+ * Fast, zero-external-scraping image resolver using local assets or SVG team-color matchup banners
  */
 export function getUniqueMatchImage(
   match: UniqueMatchImageInput,
   usedImageUrls: Set<string> = globalUsedImageUrls
 ): string {
-  initImageResolverCache();
-
   const awayTeam = String(
     match.away_team || match.awayTeam || match.away?.name || 'Away Team'
   ).trim();
@@ -657,69 +641,12 @@ export function getUniqueMatchImage(
     ? 'PBA'
     : String(match.league || match.leagueId || 'Basketball').toUpperCase();
 
-  const claimUrl = (candidate?: string): string => {
-    const clean = normalizeLive88ImageUrl(candidate);
-    if (!clean || clean.startsWith('data:image/svg')) return '';
-    if (!usedImageUrls.has(clean)) {
-      usedImageUrls.add(clean);
-      return clean;
-    }
-    return '';
-  };
-
-  // 1. For NBA Blogs (ESPN Live Feed):
-  // Pull exact game action photo from ESPN (competitions[0].headlines?.[0]?.video?.[0]?.thumbnail)
-  // or matching team article image from https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news
-  const espnDirect =
-    claimUrl(match.actionThumbnail) ||
-    claimUrl(match.espnThumbnail) ||
-    claimUrl(match.bannerUrl);
-  if (espnDirect) {
-    return espnDirect;
-  }
-
-  if (isNba) {
-    const awayCanonical = String(getCanonicalTeamName(awayTeam) || awayTeam).toLowerCase();
-    const homeCanonical = String(getCanonicalTeamName(homeTeam) || homeTeam).toLowerCase();
-    const candidatePool = [
-      ...(espnTeamNewsImages.get(awayCanonical) || []),
-      ...(espnTeamNewsImages.get(homeCanonical) || [])
-    ];
-    for (const newsImg of candidatePool) {
-      const picked = claimUrl(newsImg);
-      if (picked) return picked;
-    }
-  }
-
-  // Check exact dual-team photo for this specific matchup if unused
   const exactCurated = findExactMatchupOrTeamPhoto(awayTeam, homeTeam, leagueLabel, usedImageUrls);
   if (exactCurated) {
     return exactCurated;
   }
 
-  // 2. For PBA Blogs & Missing Action Photos (Live Web/News/Social Image Search):
-  // Query the latest sports news & social media image thumbnail dynamically using the exact matchup query
-  const searchQueries = [
-    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball latest`,
-    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball game`,
-    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball highlights`,
-    `${homeTeam} vs ${awayTeam} ${leagueLabel} basketball action`,
-    `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball ${match.status || ''} ${match.id || match.slug || ''}`.trim()
-  ];
-
-  for (const q of searchQueries) {
-    const bingThumbUrl = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(q)}&w=800&h=450&c=7&rs=1&p=0`;
-    if (!usedImageUrls.has(bingThumbUrl)) {
-      usedImageUrls.add(bingThumbUrl);
-      return bingThumbUrl;
-    }
-  }
-
-  // Ultimate guaranteed-unique Bing search URL with seed counter
-  const uniqueFallbackQuery = `${awayTeam} vs ${homeTeam} ${leagueLabel} basketball ${usedImageUrls.size + 1}`;
-  const finalBingUrl = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(uniqueFallbackQuery)}&w=800&h=450&c=7&rs=1&p=0`;
-  usedImageUrls.add(finalBingUrl);
-  return finalBingUrl;
+  return getSvgMatchupBanner(awayTeam, homeTeam, leagueLabel);
 }
 
 /**
@@ -738,116 +665,20 @@ export function getDefaultLeagueBanner(
 }
 
 /**
- * 2. TheSportsDB Free Public API for PBA, MPBL & Global Basketball Teams
+ * Zero-network no-op stub (TheSportsDB scraping disabled for PageSpeed optimization)
  */
-export async function fetchSportsDbAssets(teamOrLeagueName: string): Promise<{
+export async function fetchSportsDbAssets(_teamOrLeagueName: string): Promise<{
   logo: string;
   banner: string;
 }> {
-  const key = String(getCanonicalTeamName(teamOrLeagueName) || teamOrLeagueName || '').toLowerCase().trim();
-  if (!key) return { logo: '', banner: '' };
-
-  initImageResolverCache();
-  const cachedLogo = memoryLogoCache.get(key) || '';
-  const cachedBanner = memoryBannerCache.get(key) || '';
-  if (cachedLogo && cachedBanner) {
-    return { logo: cachedLogo, banner: cachedBanner };
-  }
-
-  const reqKey = `sportsdb:${key}`;
-  if (inFlightRequests.has(reqKey)) {
-    return inFlightRequests.get(reqKey)!;
-  }
-
-  const p = (async () => {
-    try {
-      const url = `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamOrLeagueName)}`;
-      const res = await fetch(url);
-      if (!res.ok) return { logo: cachedLogo, banner: cachedBanner };
-      const data = await res.json();
-      const teams = Array.isArray(data?.teams) ? data.teams : [];
-      const bballTeam = teams.find((t: any) => /basketball/i.test(String(t?.strSport || ''))) || teams[0];
-      if (!bballTeam) return { logo: cachedLogo, banner: cachedBanner };
-
-      const logo = String(bballTeam.strBadge || bballTeam.strLogo || '').trim();
-      const banner = String(bballTeam.strFanart1 || bballTeam.strStadiumThumb || bballTeam.strBanner || '').trim();
-
-      if (logo) {
-        memoryLogoCache.set(key, logo);
-        saveStorageMap(STORAGE_KEY_LOGOS, memoryLogoCache);
-      }
-      if (banner) {
-        memoryBannerCache.set(key, banner);
-        saveStorageMap(STORAGE_KEY_BANNERS, memoryBannerCache);
-      }
-
-      return { logo: logo || cachedLogo, banner: banner || cachedBanner };
-    } catch {
-      return { logo: cachedLogo, banner: cachedBanner };
-    } finally {
-      inFlightRequests.delete(reqKey);
-    }
-  })();
-
-  inFlightRequests.set(reqKey, p);
-  return p;
+  return { logo: '', banner: '' };
 }
 
 /**
- * 3. Automatic Topic Image Lookup via Wikipedia REST API + Wikimedia Commons Search
+ * Zero-network no-op stub (Wikipedia/Wikimedia scraping disabled for PageSpeed optimization)
  */
-export async function fetchTopicImage(query: string): Promise<string> {
-  const cleanQuery = String(query || '').trim();
-  if (!cleanQuery) return '';
-
-  initImageResolverCache();
-  const cacheKey = `topic:${cleanQuery.toLowerCase()}`;
-  const existing = memoryBannerCache.get(cacheKey);
-  if (existing) return existing;
-
-  if (inFlightRequests.has(cacheKey)) {
-    return inFlightRequests.get(cacheKey)!;
-  }
-
-  const p = (async () => {
-    try {
-      const wikiSlug = cleanQuery.replace(/\s+/g, '_');
-      const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiSlug)}`);
-      if (wikiRes.ok) {
-        const wikiData = await wikiRes.json();
-        const imgUrl = String(wikiData?.originalimage?.source || wikiData?.thumbnail?.source || '').trim();
-        if (imgUrl && !imgUrl.endsWith('.svg')) {
-          memoryBannerCache.set(cacheKey, imgUrl);
-          saveStorageMap(STORAGE_KEY_BANNERS, memoryBannerCache);
-          return imgUrl;
-        }
-      }
-
-      const commonsUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(cleanQuery + ' basketball')}&gsrlimit=1&prop=imageinfo&iiprop=url&format=json&origin=*`;
-      const commonsRes = await fetch(commonsUrl);
-      if (commonsRes.ok) {
-        const commonsData = await commonsRes.json();
-        const pages = commonsData?.query?.pages;
-        if (pages && typeof pages === 'object') {
-          const firstPage: any = Object.values(pages)[0];
-          const foundUrl = String(firstPage?.imageinfo?.[0]?.url || '').trim();
-          if (foundUrl) {
-            memoryBannerCache.set(cacheKey, foundUrl);
-            saveStorageMap(STORAGE_KEY_BANNERS, memoryBannerCache);
-            return foundUrl;
-          }
-        }
-      }
-    } catch {
-      // Ignore network errors
-    } finally {
-      inFlightRequests.delete(cacheKey);
-    }
-    return '';
-  })();
-
-  inFlightRequests.set(cacheKey, p);
-  return p;
+export async function fetchTopicImage(_query: string): Promise<string> {
+  return '';
 }
 
 /**

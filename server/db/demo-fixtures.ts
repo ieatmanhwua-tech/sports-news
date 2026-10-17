@@ -1,6 +1,11 @@
 import type { Article, Author, GameScore } from '../../shared/types';
 import { CATEGORIES_REGISTRY } from '../../shared/categories';
 import { NBA_PRESEASON_PREDICTIONS_TOMORROW, NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE } from '../../shared/nba-predictions';
+import { getCurrentManilaDateParts } from '../../shared/ph-date';
+
+const _fixtureManilaDate = getCurrentManilaDateParts();
+const _anchorMs = _fixtureManilaDate.verifiedPublishAnchorMs;
+const _isoMinutesAgo = (mins: number) => new Date(_anchorMs - mins * 60 * 1000).toISOString();
 
 export const DEMO_AUTHORS: Author[] = [
   {
@@ -70,8 +75,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": true,
     "status": "published",
-    "publishedAt": "2026-10-15T07:35:00Z",
-    "createdAt": "2026-10-15T07:00:00Z"
+    "publishedAt": _isoMinutesAgo(5),
+    "createdAt": _isoMinutesAgo(35)
   },
   {
     "id": "art-pba-002",
@@ -96,8 +101,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-15T07:20:00Z",
-    "createdAt": "2026-10-15T06:50:00Z"
+    "publishedAt": _isoMinutesAgo(18),
+    "createdAt": _isoMinutesAgo(48)
   },
   {
     "id": "art-nba-001",
@@ -122,8 +127,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-15T07:10:00Z",
-    "createdAt": "2026-10-15T06:40:00Z"
+    "publishedAt": _isoMinutesAgo(28),
+    "createdAt": _isoMinutesAgo(58)
   },
   {
     "id": "art-nba-002",
@@ -148,8 +153,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-15T07:00:00Z",
-    "createdAt": "2026-10-15T06:30:00Z"
+    "publishedAt": _isoMinutesAgo(38),
+    "createdAt": _isoMinutesAgo(68)
   },
   {
     "id": "art-other-001",
@@ -175,8 +180,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-15T06:50:00Z",
-    "createdAt": "2026-10-15T06:20:00Z"
+    "publishedAt": _isoMinutesAgo(48),
+    "createdAt": _isoMinutesAgo(78)
   },
   {
     "id": "art-other-002",
@@ -201,8 +206,8 @@ export const DEMO_ARTICLES: Article[] = [
     "isFeatured": true,
     "isBreaking": false,
     "status": "published",
-    "publishedAt": "2026-10-15T06:42:00Z",
-    "createdAt": "2026-10-15T06:10:00Z"
+    "publishedAt": _isoMinutesAgo(56),
+    "createdAt": _isoMinutesAgo(86)
   },
   {
     id: 'art-001',
@@ -571,8 +576,8 @@ Stay tuned for more updates as the Best-of-3 Quarterfinals continue.`,
     isFeatured: idx < 5,
     isBreaking: idx === 0,
     status: 'published',
-    publishedAt: new Date(Date.UTC(2026, 9, 15, 5, 55 - idx * 3, 0)).toISOString(),
-    createdAt: new Date(Date.UTC(2026, 9, 15, 5, 0, 0)).toISOString()
+    publishedAt: _isoMinutesAgo(60 + idx * 3),
+    createdAt: _isoMinutesAgo(120 + idx * 3)
   })),
   {
     id: 'art-pba-003',
@@ -607,8 +612,8 @@ Trailing 82-79 entering the final ten minutes, head coach Tim Cone tightened Gin
     isFeatured: true,
     isBreaking: false,
     status: 'published',
-    publishedAt: '2026-10-15T06:35:00Z',
-    createdAt: '2026-10-15T06:15:00Z'
+    publishedAt: _isoMinutesAgo(95),
+    createdAt: _isoMinutesAgo(125)
   },
   {
     id: 'art-uaap-003',
@@ -638,8 +643,8 @@ After UE trimmed a 13-point deficit down to two midway through the fourth quarte
     isFeatured: true,
     isBreaking: false,
     status: 'published',
-    publishedAt: '2026-10-15T06:28:00Z',
-    createdAt: '2026-10-15T06:05:00Z'
+    publishedAt: _isoMinutesAgo(102),
+    createdAt: _isoMinutesAgo(132)
   },
   {
     id: 'art-uaap-004',
@@ -667,8 +672,8 @@ Head coach Sean Chambers praised his young Morayta squad's resilience after boun
     isFeatured: false,
     isBreaking: false,
     status: 'published',
-    publishedAt: '2026-10-15T06:20:00Z',
-    createdAt: '2026-10-15T06:00:00Z'
+    publishedAt: _isoMinutesAgo(110),
+    createdAt: _isoMinutesAgo(140)
   },
   {
     id: 'art-mpbl-004',
@@ -696,8 +701,8 @@ Backed by a sea of green-and-gold hometown supporters, Batangas City pushed the 
     isFeatured: false,
     isBreaking: false,
     status: 'published',
-    publishedAt: '2026-10-15T06:12:00Z',
-    createdAt: '2026-10-15T05:55:00Z'
+    publishedAt: _isoMinutesAgo(118),
+    createdAt: _isoMinutesAgo(148)
   },
   {
     id: 'art-easl-001',
@@ -725,8 +730,8 @@ With FIBA Asia Champions Cup berths and international prestige on the line, both
     isFeatured: false,
     isBreaking: false,
     status: 'published',
-    publishedAt: '2026-10-15T06:05:00Z',
-    createdAt: '2026-10-15T05:50:00Z'
+    publishedAt: _isoMinutesAgo(125),
+    createdAt: _isoMinutesAgo(155)
   }
 ];
 

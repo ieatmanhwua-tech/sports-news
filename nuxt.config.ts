@@ -25,9 +25,57 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'node-server',
+    compressPublicAssets: true,
     logging: {
       compressedSizes: false,
       buildSuccess: true
+    }
+  },
+  routeRules: {
+    '/_nuxt/**': {
+      headers: {
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      }
+    },
+    '/img/**': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
+      }
+    },
+    '/favicon.ico': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400'
+      }
+    },
+    '/favicon-16x16.png': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400'
+      }
+    },
+    '/favicon-32x32.png': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400'
+      }
+    },
+    '/apple-touch-icon.png': {
+      headers: {
+        'Cache-Control': 'public, max-age=86400'
+      }
+    },
+    '/api/admin/**': {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private'
+      }
+    },
+    '/admin/**': {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private'
+      }
+    },
+    '/api/live88/stream-proxy': {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      }
     }
   },
   hooks: {

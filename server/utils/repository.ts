@@ -1,9 +1,24 @@
 import { getDatabaseStatus, executeQuery, inMemoryStore } from '../db/client';
 import { CATEGORIES_REGISTRY, CATEGORY_MAP, PARENT_CATEGORY_ALIASES } from '../../shared/categories';
 import type { Article, Author, CategoryInfo, ContactSubmission, ContentType, ArticleStatus } from '../../shared/types';
-import { ensureTodaysMatchBlogsSynced, buildFallbackMatchBlogForSlug } from './match-blogs';
+import { ensureTodaysMatchBlogsSynced, buildFallbackMatchBlogForSlug, registerArticlesUpdatedHook } from './match-blogs';
+import { ensureFreshManilaPublishIso } from '../../shared/ph-date';
+
+const QUERY_CACHE_TTL_MS = 30 * 1000;
+const publicArticlesQueryCache = new Map<string, { timestamp: number; result: { articles: Article[]; total: number } }>();
+const publicSlugCache = new Map<string, { timestamp: number; result: { article: Article | null; redirectSlug?: string } }>();
+
+registerArticlesUpdatedHook(() => {
+  publicArticlesQueryCache.clear();
+  publicSlugCache.clear();
+});
 
 export class ArticleRepository {
+  static invalidateCache() {
+    publicArticlesQueryCache.clear();
+    publicSlugCache.clear();
+  }
+
   /**
    * Get public articles with optional filters.
    * Only returns status = 'published'.
@@ -21,6 +36,15 @@ export class ArticleRepository {
   } = {}): Promise<{ articles: Article[]; total: number }> {
     await ensureTodaysMatchBlogsSynced();
     const status = await getDatabaseStatus();
+
+    const cacheKey = JSON.stringify(options);
+    const now = Date.now();
+    if (status.mode !== 'MYSQL') {
+      const cached = publicArticlesQueryCache.get(cacheKey);
+      if (cached && now - cached.timestamp < QUERY_CACHE_TTL_MS) {
+        return cached.result;
+      }
+    }
 
     const runInMemoryFallback = () => {
       let filtered = inMemoryStore.articles.filter(a => a.status === 'published');
@@ -81,8 +105,9 @@ export class ArticleRepository {
       const limit = options.limit || 20;
       const sliced = filtered.slice(offset, offset + limit);
 
-      inMemoryStore.refreshRelations();
-      return { articles: sliced, total };
+      const res = { articles: sliced, total };
+      publicArticlesQueryCache.set(cacheKey, { timestamp: Date.now(), result: res });
+      return res;
     };
 
     if (status.mode !== 'MYSQL') {
@@ -231,6 +256,13 @@ export class ArticleRepository {
     const cleanSlug = decodeURIComponent(String(slug || '')).trim().replace(/\/+$/, '');
     const lowerSlug = cleanSlug.toLowerCase();
 
+    if (status.mode !== 'MYSQL') {
+      const cached = publicSlugCache.get(lowerSlug);
+      if (cached && Date.now() - cached.timestamp < QUERY_CACHE_TTL_MS) {
+        return cached.result;
+      }
+    }
+
     const runInMemoryFallback = () => {
       // Check redirect map
       const redirectedTo = inMemoryStore.slugRedirects.get(cleanSlug) || inMemoryStore.slugRedirects.get(lowerSlug);
@@ -238,7 +270,6 @@ export class ArticleRepository {
         return { article: null, redirectSlug: redirectedTo };
       }
 
-      inMemoryStore.refreshRelations();
       const normalizedTarget = lowerSlug.replace(/-highlights-box-score$/, '-match-blog-today');
       const altTarget = lowerSlug.replace(/-match-blog-today$/, '-highlights-box-score');
 
@@ -251,7 +282,11 @@ export class ArticleRepository {
         article = buildFallbackMatchBlogForSlug(lowerSlug) || undefined;
       }
 
-      return { article: article || null };
+      const res = { article: article || null };
+      if (res.article) {
+        publicSlugCache.set(lowerSlug, { timestamp: Date.now(), result: res });
+      }
+      return res;
     };
 
     if (status.mode !== 'MYSQL') {
@@ -438,10 +473,12 @@ export class ArticleRepository {
       inMemoryStore.articles[existingIndex] = updated;
       inMemoryStore.refreshRelations();
       inMemoryStore.saveToDisk();
+      ArticleRepository.invalidateCache();
       savedArticle = updated;
     } else {
-      // Create new
+      // Create new — always verify current Manila date (Asia/Manila) before posting
       const defaultAuthor = inMemoryStore.authors[0]?.id || 'author-default';
+      const verifiedPublishedAt = ensureFreshManilaPublishIso(article.publishedAt, 1);
       const newArt: Article = {
         id: article.id || `art-${Date.now()}`,
         slug: article.slug || `article-${Date.now()}`,
@@ -462,12 +499,13 @@ export class ArticleRepository {
         isFeatured: Boolean(article.isFeatured),
         isBreaking: Boolean(article.isBreaking),
         status: article.status || 'draft',
-        publishedAt: article.publishedAt || new Date().toISOString(),
+        publishedAt: verifiedPublishedAt,
         createdAt: new Date().toISOString()
       };
       inMemoryStore.articles.unshift(newArt);
       inMemoryStore.refreshRelations();
       inMemoryStore.saveToDisk();
+      ArticleRepository.invalidateCache();
       savedArticle = newArt;
     }
 
@@ -533,6 +571,7 @@ export class ArticleRepository {
     if (idx >= 0) {
       inMemoryStore.articles.splice(idx, 1);
       inMemoryStore.saveToDisk();
+      ArticleRepository.invalidateCache();
     }
 
     if (status.mode === 'MYSQL') {

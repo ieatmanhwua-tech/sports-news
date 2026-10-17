@@ -220,7 +220,7 @@ useHead({
                 <ArrowRight class="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
               <div class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
-                Pre-configured with October 10 Quarterfinal standings, target SEO keywords, and bracket graphic.
+                Pre-configured with today's verified PHT Quarterfinal standings, target SEO keywords, and bracket graphic.
               </div>
             </div>
           </NuxtLink>

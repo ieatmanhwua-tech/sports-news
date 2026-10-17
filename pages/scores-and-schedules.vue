@@ -172,18 +172,19 @@ const { data, refresh, pending } = await useAsyncData('scores-board', async () =
   }>('/api/scores', {
     query: {
       league: selectedLeague.value,
-      refresh: forceRefreshFlag.value ? 'true' : undefined,
-      _t: Date.now()
+      refresh: forceRefreshFlag.value ? 'true' : undefined
     }
   });
 }, {
   watch: [selectedLeague]
 });
 
-async function refreshRealtimeScores() {
+async function refreshRealtimeScores(forceArg: boolean | Event = false) {
   if (isPolling.value) return;
+  const force = typeof forceArg === 'boolean' ? forceArg : true;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && !force) return;
   isPolling.value = true;
-  forceRefreshFlag.value = true;
+  forceRefreshFlag.value = force;
   try {
     await refresh();
   } finally {
@@ -192,16 +193,28 @@ async function refreshRealtimeScores() {
   }
 }
 
+function handleScoresVisibilityChange() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    refreshRealtimeScores(false);
+  }
+}
+
 onMounted(() => {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleScoresVisibilityChange);
+  }
   scoresPollTimer = setInterval(() => {
-    refreshRealtimeScores();
-  }, 15000);
+    refreshRealtimeScores(false);
+  }, 30000);
 });
 
 onUnmounted(() => {
   if (scoresPollTimer) {
     clearInterval(scoresPollTimer);
     scoresPollTimer = null;
+  }
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleScoresVisibilityChange);
   }
 });
 

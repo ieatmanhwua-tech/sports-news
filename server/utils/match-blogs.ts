@@ -10,12 +10,17 @@ import {
   normalizeLive88ImageUrl
 } from '../../shared/image-resolver';
 import { inMemoryStore } from '../db/client';
+import { getCurrentManilaDateParts } from '../../shared/ph-date';
 
 let lastBlogSyncTime = 0;
+let lastBlogSyncYmd = '';
 let inFlightSyncPromise: Promise<void> | null = null;
-const BLOG_SYNC_TTL_MS = 15 * 1000;
-const PHOTO_MATCH_TIMESTAMP_MS = Date.parse('2026-10-15T06:40:00.000Z');
-const GRAPHIC_MATCH_TIMESTAMP_MS = Date.parse('2026-10-12T12:00:00.000Z');
+const BLOG_SYNC_TTL_MS = 30 * 1000;
+let onArticlesUpdatedHook: (() => void) | null = null;
+
+export function registerArticlesUpdatedHook(fn: () => void) {
+  onArticlesUpdatedHook = fn;
+}
 
 function pickFeaturedImageForMatch(
   match: PhSportsMatch,
@@ -232,8 +237,11 @@ export function convertMatchToBlogArticle(
     ].join('\n\n');
   }
 
-  // Deterministic publish timestamp: real-photo match blogs interleave near the top, SVG-cover match blogs remain accessible without crowding out real photography
-  const baseMs = isRealPhoto ? PHOTO_MATCH_TIMESTAMP_MS : GRAPHIC_MATCH_TIMESTAMP_MS;
+  // Deterministic publish timestamp anchored to the current Manila date (e.g. Oct 17, 2026) so today's blogs are always up-to-date
+  const snap = getCurrentManilaDateParts();
+  const photoBaseMs = snap.verifiedPublishAnchorMs;
+  const graphicBaseMs = snap.startOfManilaDayUtcMs - 3 * 24 * 3600 * 1000;
+  const baseMs = isRealPhoto ? photoBaseMs : graphicBaseMs;
   const publishedMs = baseMs - index * 4 * 60 * 1000;
   const publishedIso = new Date(publishedMs).toISOString();
 
@@ -284,13 +292,20 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
       return false;
     });
 
-    // Sort: 1. Live matches, 2. Today/Recent Oct 14-16 matches (PBA, NBA, MPBL, NCAA, UAAP), 3. Other matches
+    // Sort: 1. Live matches, 2. Today/Recent Manila date matches (PBA, NBA, MPBL, NCAA, UAAP), 3. Other matches
+    const snap = getCurrentManilaDateParts();
     const sortedMatches = [...validMatches].sort((a, b) => {
       const rankStatus = (m: PhSportsMatch) => {
         if (m.status === 'live') return 0;
         const startStr = String(m.startTime || '');
-        if (startStr.startsWith('2026-10-15') || startStr.startsWith('2026-10-16')) return 1;
-        if (startStr.startsWith('2026-10-14')) return 2;
+        if (
+          startStr.startsWith(snap.ymd) ||
+          startStr.startsWith(snap.tomorrowYmd) ||
+          startStr.startsWith(snap.yesterdayYmd)
+        ) {
+          return 1;
+        }
+        if (startStr.startsWith(snap.twoDaysAgoYmd)) return 2;
         return 3;
       };
       const rA = rankStatus(a);
@@ -321,6 +336,8 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
     inMemoryStore.articles = [...nonMatchArticles, ...generatedArticles];
     inMemoryStore.refreshRelations();
     lastBlogSyncTime = Date.now();
+    lastBlogSyncYmd = snap.ymd;
+    if (onArticlesUpdatedHook) onArticlesUpdatedHook();
   } catch (err: any) {
     console.warn('[Match Blogs] Sync warning:', err?.message);
   }
@@ -328,11 +345,21 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
 
 export async function ensureTodaysMatchBlogsSynced(force = false): Promise<void> {
   const now = Date.now();
-  if (!force && lastBlogSyncTime > 0 && now - lastBlogSyncTime < BLOG_SYNC_TTL_MS) {
+  const currentYmd = getCurrentManilaDateParts().ymd;
+  const dateChanged = lastBlogSyncYmd !== '' && lastBlogSyncYmd !== currentYmd;
+
+  if (!force && !dateChanged && lastBlogSyncTime > 0) {
+    if (now - lastBlogSyncTime >= BLOG_SYNC_TTL_MS && !inFlightSyncPromise) {
+      // Trigger non-blocking background refresh so user requests never wait
+      inFlightSyncPromise = performMatchBlogSync(false).finally(() => {
+        inFlightSyncPromise = null;
+      });
+    }
     return;
   }
 
   if (inFlightSyncPromise) {
+    if (!force && lastBlogSyncTime > 0) return;
     await inFlightSyncPromise;
     return;
   }
@@ -365,6 +392,7 @@ export function buildFallbackMatchBlogForSlug(slug: string): Article | null {
     awayTeam: awayTeamName
   });
 
+  const snap = getCurrentManilaDateParts();
   const syntheticMatch: PhSportsMatch = {
     id: `fallback-${cleaned}`,
     sport: 'basketball',
@@ -372,9 +400,9 @@ export function buildFallbackMatchBlogForSlug(slug: string): Article | null {
     competition: classified.leagueFullName,
     status: 'scheduled',
     clock: 'Today PHT',
-    startTime: '2026-10-15T11:00:00.000Z',
-    startTimeIso: '2026-10-15T11:00:00.000Z',
-    manilaTimeFormatted: 'Oct 15, 7:00 PM PHT',
+    startTime: snap.verifiedPublishIso,
+    startTimeIso: snap.verifiedPublishIso,
+    manilaTimeFormatted: `${snap.shortLabel}, 7:00 PM PHT`,
     venue: classified.defaultVenue,
     home: {
       name: homeTeamName,
@@ -402,5 +430,6 @@ export function buildFallbackMatchBlogForSlug(slug: string): Article | null {
 
   inMemoryStore.articles.push(article);
   inMemoryStore.refreshRelations();
+  if (onArticlesUpdatedHook) onArticlesUpdatedHook();
   return inMemoryStore.articles.find(a => a.slug === cleaned) || article;
 }

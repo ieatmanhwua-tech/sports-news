@@ -34,7 +34,7 @@ const leagues: LeagueItem[] = [
     name: 'PBA',
     fullName: 'Philippine Basketball Association',
     path: '/pba',
-    logoUrl: '/img/pba.png',
+    logoUrl: '/img/pba.webp',
     tag: 'PRO'
   },
   {
@@ -42,7 +42,7 @@ const leagues: LeagueItem[] = [
     name: 'MPBL',
     fullName: 'Maharlika Pilipinas Basketball League',
     path: '/mpbl',
-    logoUrl: '/img/mpbl.png',
+    logoUrl: '/img/mpbl.webp',
     tag: 'REGIONAL'
   },
   {
@@ -58,7 +58,7 @@ const leagues: LeagueItem[] = [
     name: 'NCAA',
     fullName: 'NCAA Philippines Basketball',
     path: '/ncaa',
-    logoUrl: '/img/ncaa.png',
+    logoUrl: '/img/ncaa.webp',
     tag: 'COLLEGE'
   },
   {
@@ -66,7 +66,7 @@ const leagues: LeagueItem[] = [
     name: 'Gilas Pilipinas',
     fullName: 'National Team & FIBA Qualifiers',
     path: '/gilas',
-    logoUrl: '/img/gilas-pilipinas.png',
+    logoUrl: '/img/gilas-pilipinas.webp',
     tag: 'NATIONAL'
   },
   {
@@ -74,7 +74,7 @@ const leagues: LeagueItem[] = [
     name: 'PSL',
     fullName: 'Pilipinas Super League',
     path: '/psl',
-    logoUrl: '/img/PSL_Logo.png',
+    logoUrl: '/img/PSL_Logo.webp',
     tag: 'REGIONAL'
   },
   {
@@ -82,7 +82,7 @@ const leagues: LeagueItem[] = [
     name: 'PBA D-League',
     fullName: 'PBA Developmental League',
     path: '/d-league',
-    logoUrl: '/img/PBA_D-League_logo.png',
+    logoUrl: '/img/PBA_D-League_logo.webp',
     tag: 'LOCAL'
   },
   {
@@ -90,7 +90,7 @@ const leagues: LeagueItem[] = [
     name: 'VisMin Cup',
     fullName: 'Pilipinas VisMin Super Cup',
     path: '/vismin',
-    logoUrl: '/img/vismin-cup.png',
+    logoUrl: '/img/vismin-cup.webp',
     tag: 'REGIONAL'
   },
   {

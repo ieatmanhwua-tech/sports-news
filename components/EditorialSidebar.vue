@@ -22,24 +22,29 @@ const displayScores = computed<GameScore[]>(() => {
   return props.scores || [];
 });
 
+let isPollingSidebar = false;
+
 async function pollSidebarScores() {
+  if (isPollingSidebar) return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  isPollingSidebar = true;
   try {
-    const res = await $fetch<{ games: GameScore[] }>('/api/scores', {
-      query: { refresh: 'true', _t: Date.now() }
-    });
+    const res = await $fetch<{ games: GameScore[] }>('/api/scores');
     if (res?.games && res.games.length > 0) {
       livePolledScores.value = res.games;
     }
   } catch {
     // Keep existing scores on transient network error
+  } finally {
+    isPollingSidebar = false;
   }
 }
 
 onMounted(() => {
   if (!props.scores || props.scores.length === 0) {
-    pollSidebarScores();
+    void pollSidebarScores();
   }
-  sidebarPollTimer = setInterval(pollSidebarScores, 15000);
+  sidebarPollTimer = setInterval(pollSidebarScores, 30000);
 });
 
 onUnmounted(() => {

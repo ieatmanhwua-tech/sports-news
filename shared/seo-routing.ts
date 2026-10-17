@@ -1,6 +1,9 @@
 import type { PhSportsMatch } from './ph-sports-types';
 import { getUniqueMatchImage, resolveTeamLogoSync } from './image-resolver';
 import { isVerifiedNbaTeam, isVerifiedPbaTeam } from './team-logos';
+import { getCurrentManilaDateParts } from './ph-date';
+
+const _manilaSnap = getCurrentManilaDateParts();
 
 export const PRODUCTION_DOMAIN = 'https://tipoff.bybetcasino.ph';
 export const PROMO_URL = 'https://tipoff.bybetcasino.ph/c6Yv/';
@@ -285,7 +288,7 @@ export function formatMatchDatePht(match: Partial<PhSportsMatch>): string {
   if (formatted && !/2024|2023/.test(formatted)) {
     return formatted.includes('PHT') ? formatted : `${formatted} PHT`;
   }
-  return 'Oct 16, 7:30 PM PHT';
+  return `${getCurrentManilaDateParts().shortLabel}, 7:30 PM PHT`;
 }
 
 export function slugifyTeam(name: string): string {
@@ -321,35 +324,20 @@ export function isProductionTipOffDomain(): boolean {
 export function buildDualModeHref(
   type: 'tab' | 'watch' | 'report' | 'prediction',
   slugOrTabId: string,
-  currentPathname = '/local-sports'
+  _currentPathname = '/local-sports'
 ): string {
   const cleanSlug = String(slugOrTabId || '').toLowerCase().replace(/^\/+|\/+$/g, '');
-  if (isProductionTipOffDomain()) {
-    if (type === 'tab') {
-      const tabCfg = SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0];
-      return tabCfg.cleanPath;
-    }
-    if (type === 'watch') {
-      return `/watch/${cleanSlug}/`;
-    }
-    if (type === 'prediction') {
-      return `/prediction/${cleanSlug}/`;
-    }
-    return `/report/${cleanSlug}/`;
-  }
-
-  const basePath = currentPathname || '/local-sports';
   if (type === 'tab') {
     const tabCfg = SEO_TABS.find(t => t.id === cleanSlug || t.slug === cleanSlug) || SEO_TABS[0];
-    return `${basePath}?tab=${encodeURIComponent(tabCfg.slug)}`;
+    return tabCfg.cleanPath;
   }
   if (type === 'watch') {
-    return `${basePath}?watch=${encodeURIComponent(cleanSlug)}`;
+    return `/watch/${cleanSlug}/`;
   }
   if (type === 'prediction') {
-    return `${basePath}?prediction=${encodeURIComponent(cleanSlug)}`;
+    return `/prediction/${cleanSlug}/`;
   }
-  return `${basePath}?report=${encodeURIComponent(cleanSlug)}`;
+  return `/report/${cleanSlug}/`;
 }
 
 export function buildProductionCanonicalUrl(
@@ -527,7 +515,7 @@ export function generatePredictionBlogForMatch(
     seoTitle,
     seoDescription,
     canonicalUrl,
-    publishedAt: match.startTimeIso || match.startTime || '2026-10-16T01:00:00.000Z',
+    publishedAt: match.startTimeIso || match.startTime || getCurrentManilaDateParts().verifiedPublishIso,
     league: strictLeague,
     competition: strictLeague === 'PBA' ? "PBA Governors' Cup" : 'NBA Official Matchup',
     venue: match.venue || (strictLeague === 'PBA' ? 'Smart Araneta Coliseum' : 'Official NBA Arena'),
@@ -676,7 +664,7 @@ export function generateHighlightReportForMatch(
     seoTitle,
     seoDescription,
     canonicalUrl,
-    publishedAt: match.startTimeIso || match.startTime || '2026-10-16T01:00:00.000Z',
+    publishedAt: match.startTimeIso || match.startTime || getCurrentManilaDateParts().verifiedPublishIso,
     league: strictLeague,
     competition: strictLeague === 'PBA' ? "PBA Governors' Cup" : 'NBA Official Matchup',
     venue: match.venue || (strictLeague === 'PBA' ? 'Smart Araneta Coliseum' : 'Official NBA Arena'),
@@ -708,3 +696,555 @@ export function generateHighlightReportForMatch(
     ]
   };
 }
+
+export interface StaticBlogPost {
+  id: string;
+  slug: string;
+  type: 'prediction' | 'highlight';
+  badge: 'NBA PREDICTION' | 'PBA PREDICTION' | 'NBA FINAL RECAP' | 'PBA FINAL RECAP';
+  league: 'NBA' | 'PBA';
+  competition: string;
+  venue: string;
+  awayTeam: string;
+  homeTeam: string;
+  awayShort: string;
+  homeShort: string;
+  awayColor: string;
+  homeColor: string;
+  bannerCss: string;
+  awayLogo: string;
+  homeLogo: string;
+  bannerUrl: string;
+  headline: string;
+  seoTitle: string;
+  seoDescription: string;
+  canonicalUrl: string;
+  publishedAt: string;
+  matchDatePHT: string;
+  manilaTime: string;
+  awayScore: number;
+  homeScore: number;
+  status: string;
+  summaryLead: string;
+  taleOfTheTape: {
+    tipOffTimePht: string;
+    projectedWinner: string;
+    projectedScore: string;
+    winProbability: string;
+    spread: string;
+    overUnder: string;
+    moneyline: string;
+  };
+  paragraphs: string[];
+  topPlayerHighlights: string[];
+  quarters: {
+    label: string;
+    away: number;
+    home: number;
+  }[];
+  keyTakeaways: string[];
+}
+
+// ============================================================================
+// MANUAL BLOG UPDATE SECTION: STATIC_BLOG_POSTS
+// Prompt AI Studio anytime to manually update, add, or replace the static NBA
+// and PBA Prediction & Highlight blog articles in STATIC_BLOG_POSTS below.
+// Rendered once on page load using pure CSS team-color matchup banners.
+// ============================================================================
+export const STATIC_BLOG_POSTS: StaticBlogPost[] = [
+  {
+    id: 'static-pred-gsw-lal',
+    slug: 'golden-state-warriors-vs-los-angeles-lakers-prediction-odds-picks',
+    type: 'prediction',
+    badge: 'NBA PREDICTION',
+    league: 'NBA',
+    competition: 'NBA Western Conference Marquee',
+    venue: 'Crypto.com Arena · Los Angeles',
+    awayTeam: 'Golden State Warriors',
+    homeTeam: 'Los Angeles Lakers',
+    awayShort: 'GSW',
+    homeShort: 'LAL',
+    awayColor: '#1d428a',
+    homeColor: '#552583',
+    bannerCss: 'linear-gradient(135deg, #1d428a 0%, #0f172a 50%, #552583 100%)',
+    awayLogo: resolveTeamLogoSync('Golden State Warriors'),
+    homeLogo: resolveTeamLogoSync('Los Angeles Lakers'),
+    bannerUrl: '/img/articles/nba-preseason-pred-gsw-lal.webp',
+    headline: 'Golden State Warriors vs Los Angeles Lakers Prediction, Odds & Picks (Today · 10:00 AM PHT)',
+    seoTitle: 'Warriors vs Lakers Prediction, Odds & Picks | TipOff PH',
+    seoDescription: 'Golden State Warriors vs Los Angeles Lakers NBA prediction, Lakers -2.5 spread, O/U 228.5 total, and 56% win probability in PHT on TipOff PH.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/golden-state-warriors-vs-los-angeles-lakers-prediction-odds-picks/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Today · 10:00 AM PHT',
+    manilaTime: 'Today · 10:00 AM PHT',
+    awayScore: 112,
+    homeScore: 115,
+    status: 'scheduled',
+    summaryLead: 'Stephen Curry and the Golden State Warriors visit LeBron James, Anthony Davis, and the Los Angeles Lakers in a primetime Western Conference showdown.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Today · 10:00 AM PHT',
+      projectedWinner: 'Los Angeles Lakers (112–115)',
+      projectedScore: 'Golden State Warriors 112 – Los Angeles Lakers 115',
+      winProbability: '56% (Los Angeles Lakers)',
+      spread: 'Los Angeles Lakers -2.5',
+      overUnder: 'O/U 228.5',
+      moneyline: 'Lakers -140 / Warriors +120'
+    },
+    paragraphs: [
+      'Golden State Warriors visit Los Angeles Lakers in a marquee Western Conference clash (Today · 10:00 AM PHT at Crypto.com Arena). Our quantitative NBA model assigns Los Angeles a 56% projected win probability driven by interior paint scoring, free-throw rate differential, and Anthony Davis anchoring the half-court rim protection.',
+      'On the betting board, the consensus point spread sits at Los Angeles Lakers -2.5 with the Over/Under total at 228.5. Expect Golden State to push early pace off split-cut perimeter actions from Stephen Curry, while the Lakers counter with physical two-man pick-and-roll sets in the fourth quarter.'
+    ],
+    topPlayerHighlights: [
+      'LeBron James & Anthony Davis (LAL): Projected 54 combined points and 21 rebounds in high-leverage half-court sets.',
+      'Stephen Curry (GSW): Pacing Golden State perimeter spacing with 38.5% three-point efficiency off movement.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 28, home: 29 },
+      { label: 'Q2', away: 30, home: 28 },
+      { label: 'Q3', away: 27, home: 30 },
+      { label: 'Q4', away: 27, home: 28 }
+    ],
+    keyTakeaways: [
+      'Spread Pick: Los Angeles Lakers -2.5',
+      'Over/Under Total: O/U 228.5',
+      'Projected Win Probability: 56% Los Angeles Lakers'
+    ]
+  },
+  {
+    id: 'static-pred-ginebra-smb',
+    slug: 'barangay-ginebra-san-miguel-vs-san-miguel-beermen-prediction-odds-picks',
+    type: 'prediction',
+    badge: 'PBA PREDICTION',
+    league: 'PBA',
+    competition: "PBA Governors' Cup Manila Clasico",
+    venue: 'Smart Araneta Coliseum · Quezon City',
+    awayTeam: 'Barangay Ginebra San Miguel',
+    homeTeam: 'San Miguel Beermen',
+    awayShort: 'GIN',
+    homeShort: 'SMB',
+    awayColor: '#dc2626',
+    homeColor: '#b45309',
+    bannerCss: 'linear-gradient(135deg, #dc2626 0%, #0f172a 50%, #b45309 100%)',
+    awayLogo: resolveTeamLogoSync('Barangay Ginebra San Miguel'),
+    homeLogo: resolveTeamLogoSync('San Miguel Beermen'),
+    bannerUrl: '/img/articles/pba-ginebra-vs-nlex-araneta.jpg',
+    headline: 'Barangay Ginebra San Miguel vs San Miguel Beermen Prediction, Odds & Picks (Today · 7:30 PM PHT)',
+    seoTitle: 'Ginebra vs San Miguel PBA Prediction & Odds | TipOff PH',
+    seoDescription: 'Barangay Ginebra vs San Miguel Beermen PBA prediction, Ginebra -3.5 spread, O/U 196.5 total, and 59% win probability at Smart Araneta Coliseum.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/barangay-ginebra-san-miguel-vs-san-miguel-beermen-prediction-odds-picks/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Today · 7:30 PM PHT',
+    manilaTime: 'Today · 7:30 PM PHT',
+    awayScore: 101,
+    homeScore: 97,
+    status: 'scheduled',
+    summaryLead: 'Barangay Ginebra San Miguel and San Miguel Beermen collide at Smart Araneta Coliseum in a high-stakes PBA primetime showdown.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Today · 7:30 PM PHT',
+      projectedWinner: 'Barangay Ginebra San Miguel (101–97)',
+      projectedScore: 'Barangay Ginebra 101 – San Miguel Beermen 97',
+      winProbability: '59% (Barangay Ginebra San Miguel)',
+      spread: 'Barangay Ginebra -3.5',
+      overUnder: 'O/U 196.5',
+      moneyline: 'Ginebra -160 / San Miguel +135'
+    },
+    paragraphs: [
+      'Barangay Ginebra San Miguel faces San Miguel Beermen at Smart Araneta Coliseum (Today · 7:30 PM PHT) with top seeding on the line.Justin Brownlee and Scottie Thompson give the Gin Kings a 59% projected win probability thanks to elite fourth-quarter half-court execution and transition defense.',
+      'The PBA betting line opens at Barangay Ginebra -3.5 with an Over/Under total of 196.5. Watch for San Miguel center June Mar Fajardo to command double teams on the low block while Ginebra counters with crisp weak-side kick-out three-pointers.'
+    ],
+    topPlayerHighlights: [
+      'Justin Brownlee & Scottie Thompson (GIN): Controlling crunch-time pace and perimeter creation.',
+      'June Mar Fajardo & CJ Perez (SMB): Anchoring inside-out paint scoring and transition pressure.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 25, home: 24 },
+      { label: 'Q2', away: 24, home: 25 },
+      { label: 'Q3', away: 26, home: 23 },
+      { label: 'Q4', away: 26, home: 25 }
+    ],
+    keyTakeaways: [
+      'Spread Pick: Barangay Ginebra -3.5',
+      'Over/Under Total: O/U 196.5',
+      'Projected Win Probability: 59% Barangay Ginebra'
+    ]
+  },
+  {
+    id: 'static-pred-den-lac',
+    slug: 'denver-nuggets-vs-la-clippers-prediction-odds-picks',
+    type: 'prediction',
+    badge: 'NBA PREDICTION',
+    league: 'NBA',
+    competition: 'NBA Western Conference Clash',
+    venue: 'Intuit Dome · Inglewood',
+    awayTeam: 'Denver Nuggets',
+    homeTeam: 'LA Clippers',
+    awayShort: 'DEN',
+    homeShort: 'LAC',
+    awayColor: '#0e2240',
+    homeColor: '#c8102e',
+    bannerCss: 'linear-gradient(135deg, #0e2240 0%, #0f172a 50%, #c8102e 100%)',
+    awayLogo: resolveTeamLogoSync('Denver Nuggets'),
+    homeLogo: resolveTeamLogoSync('LA Clippers'),
+    bannerUrl: '/img/articles/nba-preseason-pred-den-lac.webp',
+    headline: 'Denver Nuggets vs LA Clippers Prediction, Odds & Picks (Tomorrow · 10:30 AM PHT)',
+    seoTitle: 'Denver Nuggets vs LA Clippers Prediction & Odds | TipOff PH',
+    seoDescription: 'Denver Nuggets vs LA Clippers NBA prediction, Nuggets -4.5 spread, O/U 223.5 total, and 62% win probability in Philippine Time on TipOff PH.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/prediction/denver-nuggets-vs-la-clippers-prediction-odds-picks/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Tomorrow · 10:30 AM PHT',
+    manilaTime: 'Tomorrow · 10:30 AM PHT',
+    awayScore: 116,
+    homeScore: 110,
+    status: 'scheduled',
+    summaryLead: 'Nikola Jokic and Jamal Murray lead the Denver Nuggets into Intuit Dome against James Harden and the LA Clippers.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Tomorrow · 10:30 AM PHT',
+      projectedWinner: 'Denver Nuggets (116–110)',
+      projectedScore: 'Denver Nuggets 116 – LA Clippers 110',
+      winProbability: '62% (Denver Nuggets)',
+      spread: 'Denver Nuggets -4.5',
+      overUnder: 'O/U 223.5',
+      moneyline: 'Nuggets -185 / Clippers +155'
+    },
+    paragraphs: [
+      'Nikola Jokic and the Denver Nuggets square off against the LA Clippers (Tomorrow · 10:30 AM PHT at Intuit Dome). Denver holds a 62% win probability in our projection model behind league-leading two-man efficiency, offensive rebounding percentage, and high-post playmaking.',
+      'Oddsmakers list Denver Nuggets -4.5 with the Over/Under total at 223.5. Expect Denver to dictate half-court tempo through Jokic-Murray inverted handoffs while forcing the Clippers into contested midrange pull-ups late in the shot clock.'
+    ],
+    topPlayerHighlights: [
+      'Nikola Jokic (DEN): Triple-double threat averaging 28.4 PTS, 12.6 REB, and 9.8 AST.',
+      'James Harden (LAC): Directing LA half-court pick-and-roll spacing and corner three creation.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 29, home: 27 },
+      { label: 'Q2', away: 30, home: 28 },
+      { label: 'Q3', away: 29, home: 27 },
+      { label: 'Q4', away: 28, home: 28 }
+    ],
+    keyTakeaways: [
+      'Spread Pick: Denver Nuggets -4.5',
+      'Over/Under Total: O/U 223.5',
+      'Projected Win Probability: 62% Denver Nuggets'
+    ]
+  },
+  {
+    id: 'static-rep-bos-cha',
+    slug: 'charlotte-hornets-vs-boston-celtics-highlights-box-score',
+    type: 'highlight',
+    badge: 'NBA FINAL RECAP',
+    league: 'NBA',
+    competition: 'NBA Eastern Conference Showcase',
+    venue: 'TD Garden · Boston',
+    awayTeam: 'Charlotte Hornets',
+    homeTeam: 'Boston Celtics',
+    awayShort: 'CHA',
+    homeShort: 'BOS',
+    awayColor: '#00788c',
+    homeColor: '#007a33',
+    bannerCss: 'linear-gradient(135deg, #00788c 0%, #0f172a 50%, #007a33 100%)',
+    awayLogo: resolveTeamLogoSync('Charlotte Hornets'),
+    homeLogo: resolveTeamLogoSync('Boston Celtics'),
+    bannerUrl: '/img/articles/nba-preseason-pred-cha-bos.webp',
+    headline: 'Boston Celtics Defeat Charlotte Hornets 119–104: Game Highlights & Short Recap',
+    seoTitle: 'Celtics Defeat Hornets 119-104 Box Score Recap | TipOff PH',
+    seoDescription: 'Boston Celtics defeat Charlotte Hornets 119-104: NBA game highlights, short recap, top player stats, and Q1-Q4 box score table on TipOff PH.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/report/charlotte-hornets-vs-boston-celtics-highlights-box-score/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Final · TD Garden',
+    manilaTime: 'Final · PHT',
+    awayScore: 104,
+    homeScore: 119,
+    status: 'finished',
+    summaryLead: 'Jayson Tatum and Jaylen Brown powered a decisive third-quarter surge as the Boston Celtics defeated the Charlotte Hornets 119–104 at TD Garden.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Final · PHT',
+      projectedWinner: 'Boston Celtics (119–104)',
+      projectedScore: 'Charlotte Hornets 104 – Boston Celtics 119',
+      winProbability: '100% (Final)',
+      spread: 'Boston Celtics -9.5 (Covered)',
+      overUnder: 'O/U 221.5 (Over 223)',
+      moneyline: 'Celtics -420'
+    },
+    paragraphs: [
+      'Boston Celtics defeated Charlotte Hornets 119–104 to secure a commanding 15-point victory at TD Garden. After opening with a 61–51 halftime cushion, Boston blew the game open in the decisive Q3 (33–25) behind barrage three-point shooting and relentless perimeter ball pressure.',
+      'In the fourth quarter (28–25), the Celtics bench unit maintained control of the defensive glass while limiting Charlotte to one-and-done possessions. Review the top player highlights and official Q1–Q4 box score breakdown below.'
+    ],
+    topPlayerHighlights: [
+      'Jayson Tatum (BOS): 31 PTS, 9 REB, 6 AST, 5-of-10 3PT — sparked the decisive 16–4 Q3 run.',
+      'Jaylen Brown (BOS): 26 PTS, 6 REB, 4 AST, 2 STL — elite two-way transition finishing.',
+      'LaMelo Ball (CHA): 24 PTS, 5 REB, 8 AST in 33 minutes for Charlotte.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 25, home: 31 },
+      { label: 'Q2', away: 26, home: 30 },
+      { label: 'Q3', away: 25, home: 33 },
+      { label: 'Q4', away: 28, home: 25 }
+    ],
+    keyTakeaways: [
+      'Final Score: Boston Celtics 119, Charlotte Hornets 104 (15-point margin).',
+      'Decisive Quarter (Q3): Boston outscored Charlotte 33–25 with 7 made three-pointers.',
+      'Team Shooting: Boston connected on 19 three-pointers and dished 31 team assists.'
+    ]
+  },
+  {
+    id: 'static-rep-tnt-meralco',
+    slug: 'meralco-bolts-vs-tnt-tropang-giga-highlights-box-score',
+    type: 'highlight',
+    badge: 'PBA FINAL RECAP',
+    league: 'PBA',
+    competition: "PBA Governors' Cup Contenders Clash",
+    venue: 'Smart Araneta Coliseum · Quezon City',
+    awayTeam: 'Meralco Bolts',
+    homeTeam: 'TNT Tropang Giga',
+    awayShort: 'MER',
+    homeShort: 'TNT',
+    awayColor: '#ea580c',
+    homeColor: '#1d4ed8',
+    bannerCss: 'linear-gradient(135deg, #ea580c 0%, #0f172a 50%, #1d4ed8 100%)',
+    awayLogo: resolveTeamLogoSync('Meralco Bolts'),
+    homeLogo: resolveTeamLogoSync('TNT Tropang Giga'),
+    bannerUrl: '/img/articles/san-miguel-beermen-semifinals-phcup.webp',
+    headline: 'TNT Tropang Giga Defeat Meralco Bolts 98–91: Game Highlights & Short Recap',
+    seoTitle: 'TNT Defeat Meralco 98-91 PBA Box Score & Recap | TipOff PH',
+    seoDescription: 'TNT Tropang Giga defeat Meralco Bolts 98-91: PBA game highlights, short recap, and quarter-by-quarter box score table on TipOff PH.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/report/meralco-bolts-vs-tnt-tropang-giga-highlights-box-score/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Final · Araneta Coliseum',
+    manilaTime: 'Final · PHT',
+    awayScore: 91,
+    homeScore: 98,
+    status: 'finished',
+    summaryLead: 'Rondae Hollis-Jefferson and Calvin Oftana delivered clutch fourth-quarter baskets to lift TNT Tropang Giga past the Meralco Bolts, 98–91.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Final · PHT',
+      projectedWinner: 'TNT Tropang Giga (98–91)',
+      projectedScore: 'Meralco Bolts 91 – TNT Tropang Giga 98',
+      winProbability: '100% (Final)',
+      spread: 'TNT Tropang Giga -3.5 (Covered)',
+      overUnder: 'O/U 187.5 (Over 189)',
+      moneyline: 'TNT -165'
+    },
+    paragraphs: [
+      'TNT Tropang Giga defeated Meralco Bolts 98–91 to claim a 7-point PBA victory at Smart Araneta Coliseum. Entering the fourth quarter deadlocked at 71–71, TNT unleashed a decisive 27–20 final period fueled by Rondae Hollis-Jefferson’s rim attacks and Calvin Oftana’s corner triples.',
+      'Defensively, Tropang Giga held Meralco to 36% shooting over the final six minutes while converting 10-of-11 free throws down the stretch. Check out the PBA quarter breakdown and official box score table below.'
+    ],
+    topPlayerHighlights: [
+      'Rondae Hollis-Jefferson (TNT): 32 PTS, 13 REB, 6 AST, 3 BLK — dominated both ends in Q4.',
+      'Calvin Oftana & RR Pogoy (TNT): Combined for 35 points and 7 three-pointers.',
+      'Chris Newsome (MER): Led Meralco with 22 PTS, 5 REB, and 6 AST.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 23, home: 24 },
+      { label: 'Q2', away: 24, home: 22 },
+      { label: 'Q3', away: 24, home: 25 },
+      { label: 'Q4', away: 20, home: 27 }
+    ],
+    keyTakeaways: [
+      'Final Score: TNT Tropang Giga 98, Meralco Bolts 91 (7-point winning margin).',
+      'Decisive Quarter (Q4): TNT outscored Meralco 27–20 to break a 71–71 tie.',
+      'Clutch Defense: TNT forced 5 fourth-quarter turnovers at Smart Araneta Coliseum.'
+    ]
+  },
+  {
+    id: 'static-rep-okc-ind',
+    slug: 'indiana-pacers-vs-oklahoma-city-thunder-highlights-box-score',
+    type: 'highlight',
+    badge: 'NBA FINAL RECAP',
+    league: 'NBA',
+    competition: 'NBA Interconference Finale',
+    venue: 'Paycom Center · Oklahoma City',
+    awayTeam: 'Indiana Pacers',
+    homeTeam: 'Oklahoma City Thunder',
+    awayShort: 'IND',
+    homeShort: 'OKC',
+    awayColor: '#002d62',
+    homeColor: '#007ac1',
+    bannerCss: 'linear-gradient(135deg, #002d62 0%, #0f172a 50%, #007ac1 100%)',
+    awayLogo: resolveTeamLogoSync('Indiana Pacers'),
+    homeLogo: resolveTeamLogoSync('Oklahoma City Thunder'),
+    bannerUrl: '/img/articles/nba-preseason-pred-ind-okc.webp',
+    headline: 'Oklahoma City Thunder Defeat Indiana Pacers 118–111: Game Highlights & Short Recap',
+    seoTitle: 'Thunder Defeat Pacers 118-111 Box Score Recap | TipOff PH',
+    seoDescription: 'Oklahoma City Thunder defeat Indiana Pacers 118-111: NBA game highlights, Shai Gilgeous-Alexander stats, and Q1-Q4 box score on TipOff PH.',
+    canonicalUrl: `${PRODUCTION_DOMAIN}/report/indiana-pacers-vs-oklahoma-city-thunder-highlights-box-score/`,
+    publishedAt: _manilaSnap.verifiedPublishIso,
+    matchDatePHT: 'Final · Paycom Center',
+    manilaTime: 'Final · PHT',
+    awayScore: 111,
+    homeScore: 118,
+    status: 'finished',
+    summaryLead: 'Shai Gilgeous-Alexander and Chet Holmgren fueled a dominant second half as the Oklahoma City Thunder topped the Indiana Pacers 118–111.',
+    taleOfTheTape: {
+      tipOffTimePht: 'Final · PHT',
+      projectedWinner: 'Oklahoma City Thunder (118–111)',
+      projectedScore: 'Indiana Pacers 111 – Oklahoma City Thunder 118',
+      winProbability: '100% (Final)',
+      spread: 'Oklahoma City Thunder -5.5 (Covered)',
+      overUnder: 'O/U 231.5 (Under 229)',
+      moneyline: 'Thunder -210'
+    },
+    paragraphs: [
+      'Oklahoma City Thunder defeated Indiana Pacers 118–111 to earn a 7-point victory at Paycom Center. Oklahoma City seized momentum in a 34–26 third quarter by turning live-ball turnovers into transition layups and kick-out threes.',
+      'Down the stretch in Q4 (28–27), Shai Gilgeous-Alexander repeatedly got to his midrange spots while Chet Holmgren sealed the paint with three second-half blocks. Full player highlights and Q1–Q4 box scores are detailed below.'
+    ],
+    topPlayerHighlights: [
+      'Shai Gilgeous-Alexander (OKC): 33 PTS, 6 REB, 7 AST, 3 STL on 12-of-20 FG.',
+      'Chet Holmgren (OKC): 21 PTS, 11 REB, 4 BLK — anchored rim protection.',
+      'Tyrese Haliburton (IND): 22 PTS, 11 AST, 4 REB in 35 minutes.'
+    ],
+    quarters: [
+      { label: 'Q1', away: 29, home: 28 },
+      { label: 'Q2', away: 29, home: 28 },
+      { label: 'Q3', away: 26, home: 34 },
+      { label: 'Q4', away: 27, home: 28 }
+    ],
+    keyTakeaways: [
+      'Final Score: Oklahoma City Thunder 118, Indiana Pacers 111 (7-point margin).',
+      'Decisive Quarter (Q3): OKC outscored Indiana 34–26 after trailing by 2 at halftime.',
+      'Points Off Turnovers: Oklahoma City held a 24–12 edge in points off turnovers.'
+    ]
+  }
+];
+
+export const PRE_RENDERED_INITIAL_MATCHES: PhSportsMatch[] = [
+  {
+    id: 'prerender-nba-gsw-lal',
+    leagueId: 'nba',
+    competition: 'NBA',
+    sport: 'basketball',
+    status: 'live',
+    clock: 'Q4 04:12',
+    startTime: `${_manilaSnap.ymd}T02:00:00.000Z`,
+    startTimeIso: `${_manilaSnap.ymd}T02:00:00.000Z`,
+    manilaTimeFormatted: 'LIVE · Q4 04:12',
+    venue: 'Crypto.com Arena',
+    streamLabel: 'NBA TV Philippines / League Pass',
+    hasStream: true,
+    scoreAvailable: true,
+    homeScore: 108,
+    awayScore: 105,
+    home: {
+      id: 'lal',
+      name: 'Los Angeles Lakers',
+      shortName: 'LAL',
+      initials: 'LAL',
+      accent: '#552583',
+      logo: resolveTeamLogoSync('Los Angeles Lakers')
+    },
+    away: {
+      id: 'gsw',
+      name: 'Golden State Warriors',
+      shortName: 'GSW',
+      initials: 'GSW',
+      accent: '#1d428a',
+      logo: resolveTeamLogoSync('Golden State Warriors')
+    },
+    sources: [
+      { url: '/videos/basketball-live.webm', type: 'webm', label: 'NBA Live Feed' }
+    ]
+  },
+  {
+    id: 'prerender-pba-gin-smb',
+    leagueId: 'pba',
+    competition: "PBA Governors' Cup",
+    sport: 'basketball',
+    status: 'live',
+    clock: 'Q3 06:45',
+    startTime: `${_manilaSnap.ymd}T02:30:00.000Z`,
+    startTimeIso: `${_manilaSnap.ymd}T02:30:00.000Z`,
+    manilaTimeFormatted: 'LIVE · Q3 06:45',
+    venue: 'Smart Araneta Coliseum',
+    streamLabel: 'PBA Rush / RPTV Live',
+    hasStream: true,
+    scoreAvailable: true,
+    homeScore: 76,
+    awayScore: 79,
+    home: {
+      id: 'smb',
+      name: 'San Miguel Beermen',
+      shortName: 'SMB',
+      initials: 'SMB',
+      accent: '#b45309',
+      logo: resolveTeamLogoSync('San Miguel Beermen')
+    },
+    away: {
+      id: 'gin',
+      name: 'Barangay Ginebra San Miguel',
+      shortName: 'GIN',
+      initials: 'GIN',
+      accent: '#dc2626',
+      logo: resolveTeamLogoSync('Barangay Ginebra San Miguel')
+    },
+    sources: [
+      { url: '/videos/basketball-live.webm', type: 'webm', label: 'PBA Live Feed' }
+    ]
+  },
+  {
+    id: 'prerender-nba-den-lac',
+    leagueId: 'nba',
+    competition: 'NBA',
+    sport: 'basketball',
+    status: 'scheduled',
+    clock: '7:30 PM PHT',
+    startTime: `${_manilaSnap.ymd}T11:30:00.000Z`,
+    startTimeIso: `${_manilaSnap.ymd}T11:30:00.000Z`,
+    manilaTimeFormatted: 'Today · 7:30 PM PHT',
+    venue: 'Intuit Dome',
+    streamLabel: 'NBA League Pass',
+    hasStream: true,
+    scoreAvailable: false,
+    homeScore: 0,
+    awayScore: 0,
+    home: {
+      id: 'lac',
+      name: 'LA Clippers',
+      shortName: 'LAC',
+      initials: 'LAC',
+      accent: '#c8102e',
+      logo: resolveTeamLogoSync('LA Clippers')
+    },
+    away: {
+      id: 'den',
+      name: 'Denver Nuggets',
+      shortName: 'DEN',
+      initials: 'DEN',
+      accent: '#0e2240',
+      logo: resolveTeamLogoSync('Denver Nuggets')
+    },
+    sources: []
+  },
+  {
+    id: 'prerender-pba-tnt-mer',
+    leagueId: 'pba',
+    competition: "PBA Governors' Cup",
+    sport: 'basketball',
+    status: 'finished',
+    clock: 'FT',
+    startTime: `${_manilaSnap.yesterdayYmd}T11:30:00.000Z`,
+    startTimeIso: `${_manilaSnap.yesterdayYmd}T11:30:00.000Z`,
+    manilaTimeFormatted: 'Final · PHT',
+    venue: 'Smart Araneta Coliseum',
+    streamLabel: 'PBA Rush / Official Box Score',
+    hasStream: false,
+    scoreAvailable: true,
+    homeScore: 98,
+    awayScore: 91,
+    home: {
+      id: 'tnt',
+      name: 'TNT Tropang Giga',
+      shortName: 'TNT',
+      initials: 'TNT',
+      accent: '#1d4ed8',
+      logo: resolveTeamLogoSync('TNT Tropang Giga')
+    },
+    away: {
+      id: 'mer',
+      name: 'Meralco Bolts',
+      shortName: 'MER',
+      initials: 'MER',
+      accent: '#ea580c',
+      logo: resolveTeamLogoSync('Meralco Bolts')
+    },
+    sources: []
+  }
+];
+

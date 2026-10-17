@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LocalSportsHub from '~/components/LocalSportsHub.vue';
+import { PRE_RENDERED_INITIAL_MATCHES } from '~/shared/seo-routing';
 </script>
 
 <template>
@@ -9,12 +10,12 @@ import LocalSportsHub from '~/components/LocalSportsHub.vue';
         <h1 class="text-lg sm:text-2xl font-black tracking-tight text-white leading-snug">
           NBA &amp; PBA Live Today: Scores, Streams &amp; Schedule
         </h1>
-        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 leading-relaxed">
+        <p class="text-xs text-[#cbd5e1] mt-0.5 leading-relaxed">
           Real-time scores, match schedules in PHT, and live video broadcasts. Select any match below to watch its stream or view its box score report.
         </p>
       </div>
     </div>
 
-    <LocalSportsHub :max-items="60" />
+    <LocalSportsHub :max-items="60" :initial-matches="PRE_RENDERED_INITIAL_MATCHES" />
   </div>
 </template>

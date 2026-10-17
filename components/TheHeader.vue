@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { NAVIGATION_GROUPS } from '~/shared/categories';
-import tipoffLogo from '~/assets/img/TipOffPh_logo.png';
+const tipoffLogo = '/img/TipOffPh_logo.webp';
+const tipoffLogoSrcset = '/img/TipOffPh_logo-360w.webp 360w, /img/TipOffPh_logo.webp 540w, /img/TipOffPh_logo-720w.webp 720w';
 import { 
   Search, 
   Menu, 
@@ -94,10 +95,14 @@ const primaryNav = [
           <NuxtLink to="/" class="group flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded py-0.5 shrink-0">
             <img 
               :src="tipoffLogo" 
+              :srcset="tipoffLogoSrcset"
+              sizes="(max-width: 640px) 125px, 220px"
               alt="TipOffPh - The Philippine Basketball Court" 
               class="h-9 sm:h-12 md:h-14 lg:h-13 xl:h-15 w-auto max-w-[125px] sm:max-w-[190px] md:max-w-[220px] xl:max-w-[250px] object-contain transition-transform group-hover:scale-[1.02] drop-shadow-sm"
-              width="2172"
-              height="724"
+              width="540"
+              height="180"
+              fetchpriority="high"
+              decoding="async"
             />
             <span class="sr-only">TipOffPh - The Philippine Basketball Court</span>
           </NuxtLink>

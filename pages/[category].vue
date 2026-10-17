@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { getCategoryBySlug } from '~/shared/categories';
 import type { Article, ContentType, GameScore } from '~/shared/types';
-import { SEO_SLUG_TO_TAB_ID, SEO_TABS, PROMO_TARGET_URL } from '~/shared/seo-routing';
+import { SEO_SLUG_TO_TAB_ID, SEO_TABS, PROMO_TARGET_URL, PRE_RENDERED_INITIAL_MATCHES } from '~/shared/seo-routing';
 import { getTeamLogo } from '~/shared/team-logos';
 import LocalSportsHub from '~/components/LocalSportsHub.vue';
 import ArticleCard from '~/components/ArticleCard.vue';
 import EditorialSidebar from '~/components/EditorialSidebar.vue';
 import AdUnit from '~/components/AdUnit.vue';
 import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
-import { ChevronLeft, ChevronRight, FileQuestion, Tv, RefreshCw } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, FileQuestion, Tv } from 'lucide-vue-next';
 
 const route = useRoute();
 const config = useRuntimeConfig();
@@ -45,9 +45,9 @@ if (!category && !matchedSeoTabId.value && lowerSlug.value !== 'c6yv') {
   });
 }
 
-// Fetch articles for this category
+// Fetch articles for this category ONLY when not a Live Hub SEO tab
 const { data, refresh } = await useAsyncData(`cat-${categorySlug.value}-${pageNum.value}`, async () => {
-  if (!category) {
+  if (!category || matchedSeoTabId.value) {
     return { articles: [], total: 0, page: 1, totalPages: 1 };
   }
   const query: Record<string, any> = {
@@ -105,7 +105,6 @@ function handleFilter(type: ContentType | 'all') {
   refresh();
 }
 
-// Map category slug to league query for real-time API scores
 const mappedLeagueForScores = computed(() => {
   const s = lowerSlug.value;
   if (s.startsWith('pba')) return 'pba';
@@ -117,56 +116,7 @@ const mappedLeagueForScores = computed(() => {
   return 'all';
 });
 
-const forceScoresRefresh = ref(false);
-const isSyncingScores = ref(false);
-let categoryScoresTimer: ReturnType<typeof setInterval> | null = null;
-
-const { data: scoresRes, refresh: refreshScores } = await useAsyncData(
-  `cat-scores-${categorySlug.value}`,
-  async () => {
-    return await $fetch<{
-      source: string;
-      lastUpdatedUtc: string;
-      games: GameScore[];
-    }>('/api/scores', {
-      query: {
-        league: mappedLeagueForScores.value,
-        refresh: forceScoresRefresh.value ? 'true' : undefined,
-        _t: Date.now()
-      }
-    });
-  },
-  {
-    watch: [mappedLeagueForScores]
-  }
-);
-
-const categoryScores = computed(() => scoresRes.value?.games || []);
-
-async function syncRealtimeCategoryScores() {
-  if (isSyncingScores.value) return;
-  isSyncingScores.value = true;
-  forceScoresRefresh.value = true;
-  try {
-    await refreshScores();
-  } finally {
-    forceScoresRefresh.value = false;
-    isSyncingScores.value = false;
-  }
-}
-
-onMounted(() => {
-  categoryScoresTimer = setInterval(() => {
-    syncRealtimeCategoryScores();
-  }, 15000);
-});
-
-onUnmounted(() => {
-  if (categoryScoresTimer) {
-    clearInterval(categoryScoresTimer);
-    categoryScoresTimer = null;
-  }
-});
+const categoryScores = ref<GameScore[]>([]);
 </script>
 
 <template>
@@ -177,13 +127,13 @@ onUnmounted(() => {
         <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">
           {{ matchedSeoTabConfig?.anchorText || 'NBA & PBA Live Today' }}
         </h1>
-        <p class="text-xs text-slate-400 mt-0.5">
+        <p class="text-xs text-[#cbd5e1] mt-0.5">
           {{ matchedSeoTabConfig?.description }}
         </p>
       </div>
     </div>
 
-    <LocalSportsHub :initial-league="matchedSeoTabId" :max-items="60" />
+    <LocalSportsHub :initial-league="matchedSeoTabId" :max-items="60" :initial-matches="PRE_RENDERED_INITIAL_MATCHES" />
   </div>
 
   <!-- Standard Editorial Category View -->

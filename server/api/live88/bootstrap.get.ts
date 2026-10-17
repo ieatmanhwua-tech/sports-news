@@ -4,17 +4,23 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
-  setResponseHeaders(event, {
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0'
-  });
+  setResponseHeaders(
+    event,
+    refresh
+      ? {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      : {
+          'Cache-Control': 'public, max-age=10, s-maxage=15, stale-while-revalidate=30'
+        }
+  );
 
   try {
     const data = await fetchLocalSportsData(refresh);
     return {
       code: 0,
       data: {
+        generatedAt: data.generatedAt,
         leagues: [
           { id: 'nba', name: 'NBA' },
           { id: 'pba', name: 'PBA' },
@@ -32,3 +38,4 @@ export default defineEventHandler(async (event) => {
     return { code: 200, data: { leagues: [], matches: [], signals: [], liveCount: 0 } };
   }
 });
+

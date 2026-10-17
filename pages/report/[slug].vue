@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LocalSportsHub from '~/components/LocalSportsHub.vue';
+import { PRE_RENDERED_INITIAL_MATCHES } from '~/shared/seo-routing';
 
 const route = useRoute();
 const reportSlug = computed(() => String(route.params.slug || '').toLowerCase().replace(/\/+$/, ''));
@@ -12,12 +13,12 @@ const reportSlug = computed(() => String(route.params.slug || '').toLowerCase().
         <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">
           Basketball Highlights &amp; Official Box Score Report
         </h1>
-        <p class="text-xs text-slate-400 mt-0.5">
+        <p class="text-xs text-[#cbd5e1] mt-0.5">
           Post-game basketball highlights, quarter-by-quarter box scores, and live streams on TipOff PH.
         </p>
       </div>
     </div>
 
-    <LocalSportsHub initial-league="highlights" :initial-report-slug="reportSlug" :max-items="60" />
+    <LocalSportsHub initial-league="highlights" :initial-report-slug="reportSlug" :max-items="60" :initial-matches="PRE_RENDERED_INITIAL_MATCHES" />
   </div>
 </template>

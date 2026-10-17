@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import type { Article, Author, ContentType, ArticleStatus } from '~/shared/types';
 import { CATEGORIES_REGISTRY } from '~/shared/categories';
+import { getCurrentManilaDateParts, ensureFreshManilaPublishIso } from '~/shared/ph-date';
 import { 
   PenSquare, 
   Save, 
@@ -51,6 +52,8 @@ const isAuthenticated = ref(false);
 const authLoading = ref(true);
 const currentUser = ref<any>(null);
 
+const currentManilaDate = computed(() => getCurrentManilaDateParts());
+
 // Form State
 const form = ref<Partial<Article> & { targetKeyword?: string }>({
   title: '',
@@ -64,11 +67,11 @@ const form = ref<Partial<Article> & { targetKeyword?: string }>({
   sourceName: '',
   sourceUrl: '',
   featuredImageUrl: '/img/mpbl-latest-playoff-bracket-oct-10.webp',
-  imageAlt: '2026 MPBL Playoff Bracket Standings Update',
+  imageAlt: `2026 MPBL Playoff Bracket Standings Update (${getCurrentManilaDateParts().monthDayLabel})`,
   imageCredit: 'TipOffPh / Sports Desk',
   targetKeyword: 'MPBL Playoffs 2026 bracket',
-  seoTitle: '2026 MPBL Playoff Bracket: Top Seeds Dominate Quarterfinals',
-  seoDescription: 'Get the latest 2026 MPBL Playoff bracket updates for October 10. Top seeds in both the North and South divisions secure early 1-0 Quarterfinal leads.',
+  seoTitle: `2026 MPBL Playoff Bracket (${getCurrentManilaDateParts().shortLabel}): Top Seeds Dominate`,
+  seoDescription: `Get the latest 2026 MPBL Playoff bracket updates for ${getCurrentManilaDateParts().monthDayLabel}. Top seeds in both the North and South divisions secure early Quarterfinal leads.`,
   isFeatured: true,
   isBreaking: false,
   status: 'published',
@@ -283,24 +286,25 @@ function insertMarkdown(prefix: string, suffix: string = '') {
   }, 50);
 }
 
-// Template loader for fast MPBL / PBA posting
+// Template loader for fast MPBL / PBA posting (Always verifies current Manila date before populating)
 function loadMPBLTemplate() {
+  const snap = getCurrentManilaDateParts();
   form.value = {
-    title: '2026 MPBL Playoffs: Bracket Standings as of October 10',
-    slug: 'mpbl-playoffs-2026-bracket-update-oct-10',
-    excerpt: 'Top seeds in both the North and South divisions take early 1-0 leads as the 2026 MPBL Playoffs kick off with fierce Best-of-3 Quarterfinal intensity.',
-    body: `The 2026 MPBL Playoffs have officially tipped off, and the top contenders are already proving why they earned home-court advantage. Based on the latest updated bracket for the Best-of-3 Quarterfinals, the heavyweights in both the North and South Divisions have successfully drawn first blood.
+    title: `2026 MPBL Playoffs: Bracket Standings as of ${snap.monthDayLabel}`,
+    slug: `mpbl-playoffs-2026-bracket-update-${snap.slugSuffix}`,
+    excerpt: `Top seeds in both the North and South divisions take command as of ${snap.monthDayLabel} in the 2026 MPBL Playoffs Best-of-3 Quarterfinals.`,
+    body: `The 2026 MPBL Playoffs are in full swing as of ${snap.fullLabel}, and the top contenders are proving why they earned home-court advantage. Based on the latest updated bracket for the Best-of-3 Quarterfinals, the heavyweights in both the North and South Divisions have taken control.
 
-### North Division Quarterfinals Update
-The upper echelon of the North Division took care of business in their opening matches. The #1, #2, and #3 seeds have all jumped to a 1-0 lead in their respective Best-of-3 series. The only series yet to record a result is the highly anticipated #4 vs. #5 seed matchup, which remains deadlocked at 0-0.
+### North Division Quarterfinals Update (${snap.monthDayLabel})
+The upper echelon of the North Division took care of business in their opening matches. The #1, #2, and #3 seeds have all jumped ahead in their respective Best-of-3 series, while the #4 vs. #5 seed matchup remains a tightly contested battle.
 
-### South Division Quarterfinals Update
-The South Division bracket perfectly mirrors the action up North. The #1, #2, and #3 seeds successfully defended their home turf to secure 1-0 advantages. Similar to the North, the #4 vs. #5 seed battle in the South has yet to notch a win for either side, sitting at 0-0.
+### South Division Quarterfinals Update (${snap.monthDayLabel})
+The South Division bracket mirrors the action up North. The #1, #2, and #3 seeds successfully defended their home turf to secure early series advantages as regional playoff intensity heats up.
 
 ### The Road to the National Finals
 Teams are currently battling through the Quarterfinals and Semifinals, both of which are sudden-death Best-of-3 series. The survivors will advance to the grueling Best-of-5 Division Finals to crown the kings of the North and South. Ultimately, the two division champions will collide in the 2026 National Finals.
 
-Stay tuned for more updates as the Best-of-3 Quarterfinals continue.`,
+Stay tuned for more live updates as the Best-of-3 Quarterfinals continue.`,
     primaryCategoryId: 'mpbl-news',
     topicIds: ['mpbl-news'],
     authorId: 'author-carlo-mendoza',
@@ -308,11 +312,11 @@ Stay tuned for more updates as the Best-of-3 Quarterfinals continue.`,
     sourceName: 'MPBL Media Bureau',
     sourceUrl: 'https://mpbl.ph',
     featuredImageUrl: '/img/mpbl-latest-playoff-bracket-oct-10.webp',
-    imageAlt: '2026 MPBL Playoff Bracket Standings Update October 10',
+    imageAlt: `2026 MPBL Playoff Bracket Standings Update ${snap.monthDayLabel}`,
     imageCredit: 'TipOffPh / Sports Desk',
-    targetKeyword: 'MPBL Playoffs 2026 bracket',
-    seoTitle: '2026 MPBL Playoff Bracket: Top Seeds Dominate Quarterfinals',
-    seoDescription: 'Get the latest 2026 MPBL Playoff bracket updates for October 10. Top seeds in both the North and South divisions secure early 1-0 Quarterfinal leads.',
+    targetKeyword: `MPBL Playoffs 2026 bracket ${snap.monthDayLabel}`,
+    seoTitle: `2026 MPBL Playoff Bracket (${snap.shortLabel}): Top Seeds Dominate`,
+    seoDescription: `Get the latest 2026 MPBL Playoff bracket updates for ${snap.monthDayLabel}. Top seeds in both the North and South divisions secure early Quarterfinal leads.`,
     isFeatured: true,
     isBreaking: false,
     status: 'published',
@@ -640,6 +644,13 @@ async function handlePublish(statusOverride?: ArticleStatus) {
     return;
   }
 
+  // Always check and verify current Philippine date (Asia/Manila) before publishing
+  if (!isEditing.value) {
+    form.value.publishedAt = ensureFreshManilaPublishIso(form.value.publishedAt, 1);
+  } else if (!form.value.publishedAt) {
+    form.value.publishedAt = new Date().toISOString();
+  }
+
   isSubmitting.value = true;
   feedback.value = null;
 
@@ -762,9 +773,12 @@ useHead({
                 <span v-if="isEditing" class="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono">
                   ID: {{ articleId }}
                 </span>
+                <span class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-semibold">
+                  PHT Date: {{ currentManilaDate.fullLabel }}
+                </span>
               </h1>
               <p class="text-[11px] text-slate-400 hidden sm:block">
-                {{ isEditing ? 'Modify content, tags, SEO metadata, and syndicate updates' : 'Create & syndicate basketball news, bracket updates, and analysis' }}
+                {{ isEditing ? 'Modify content, tags, SEO metadata, and syndicate updates' : `Verified Manila Date (${currentManilaDate.shortLabel}, ${currentManilaDate.year}) • Create & syndicate basketball news, bracket updates, and analysis` }}
               </p>
             </div>
           </div>

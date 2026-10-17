@@ -6,14 +6,19 @@ export default defineEventHandler(async (event) => {
   const sport = query.sport ? String(query.sport).toLowerCase() : '';
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
-  setResponseHeaders(event, {
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0'
-  });
+  setResponseHeaders(
+    event,
+    refresh
+      ? {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      : {
+          'Cache-Control': 'public, max-age=10, s-maxage=15, stale-while-revalidate=30'
+        }
+  );
 
   try {
-    const data = await fetchLocalSportsData(refresh);
+    const data = await fetchLocalSportsData(refresh, 'scores');
     let results = segment === 'live' ? data.liveMatches : data.allMatches;
     if (sport) {
       results = results.filter(m => m.sport === sport || m.leagueId === sport);
@@ -21,6 +26,7 @@ export default defineEventHandler(async (event) => {
     return {
       code: 0,
       data: {
+        generatedAt: data.generatedAt,
         count: results.length,
         results
       }
@@ -30,3 +36,4 @@ export default defineEventHandler(async (event) => {
     return { code: 200, data: { count: 0, results: [] } };
   }
 });
+

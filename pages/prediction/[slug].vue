@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LocalSportsHub from '~/components/LocalSportsHub.vue';
+import { PRE_RENDERED_INITIAL_MATCHES } from '~/shared/seo-routing';
 
 const route = useRoute();
 const predictionSlug = computed(() => String(route.params.slug || '').toLowerCase().replace(/\/+$/, ''));
@@ -12,12 +13,12 @@ const predictionSlug = computed(() => String(route.params.slug || '').toLowerCas
         <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">
           Basketball Prediction, Betting Tale of the Tape &amp; Picks Today
         </h1>
-        <p class="text-xs text-slate-400 mt-0.5">
-          Automated pre-game basketball predictions, win probabilities, spreads, and over/under totals on TipOff PH.
+        <p class="text-xs text-[#cbd5e1] mt-0.5">
+          Pre-game basketball predictions, win probabilities, spreads, and over/under totals on TipOff PH.
         </p>
       </div>
     </div>
 
-    <LocalSportsHub initial-league="predictions" :initial-prediction-slug="predictionSlug" :max-items="60" />
+    <LocalSportsHub initial-league="predictions" :initial-prediction-slug="predictionSlug" :max-items="60" :initial-matches="PRE_RENDERED_INITIAL_MATCHES" />
   </div>
 </template>

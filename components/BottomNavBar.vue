@@ -1,23 +1,20 @@
 <script setup lang="ts">
-import { Home, Tv, Trophy, Calendar, Newspaper } from 'lucide-vue-next';
-
 const route = useRoute();
 
 interface NavItem {
   name: string;
   label: string;
+  ariaLabel: string;
   path: string;
-  icon: any;
-  badge?: string;
   isLive?: boolean;
 }
 
 const navItems: NavItem[] = [
-  { name: 'home', label: 'Home', path: '/', icon: Home },
-  { name: 'live', label: 'Live', path: '/local-sports', icon: Tv, isLive: true },
-  { name: 'scores', label: 'Scores', path: '/scores-and-schedules', icon: Trophy },
-  { name: 'schedules', label: 'Schedules', path: '/scores-and-schedules?status=upcoming', icon: Calendar },
-  { name: 'news', label: 'News', path: '/latest-news', icon: Newspaper }
+  { name: 'home', label: 'Home', ariaLabel: 'Home — NBA and PBA Live Hub', path: '/' },
+  { name: 'live', label: 'Live', ariaLabel: 'Watch Live NBA and PBA Streams', path: '/local-sports', isLive: true },
+  { name: 'scores', label: 'Scores', ariaLabel: 'Basketball Live Scores and Box Scores', path: '/scores-and-schedules' },
+  { name: 'schedules', label: 'Schedules', ariaLabel: 'Upcoming Basketball Schedules in PHT', path: '/scores-and-schedules?status=upcoming' },
+  { name: 'news', label: 'News', ariaLabel: 'Latest Philippine Basketball News', path: '/latest-news' }
 ];
 
 function isActive(item: NavItem): boolean {
@@ -37,7 +34,7 @@ function isActive(item: NavItem): boolean {
 <template>
   <!-- Fixed Thumb-Accessible Mobile Bottom Navigation Bar (lg:hidden) -->
   <nav 
-    class="fixed bottom-0 inset-x-0 z-50 lg:hidden bg-[#0a0f1d]/95 backdrop-blur-xl border-t border-slate-800/90 shadow-[0_-4px_25px_rgba(0,0,0,0.7)] px-2 py-1.5 transition-all"
+    class="fixed bottom-0 inset-x-0 z-50 lg:hidden bg-[#0a0f1d]/95 backdrop-blur-xl border-t border-slate-800/90 shadow-[0_-4px_25px_rgba(0,0,0,0.7)] px-2 py-1 transition-all"
     aria-label="Mobile Navigation"
   >
     <!-- Top Glowing Accent Line -->
@@ -48,10 +45,11 @@ function isActive(item: NavItem): boolean {
         v-for="item in navItems"
         :key="item.name"
         :to="item.path"
-        class="flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all relative group"
+        :aria-label="item.ariaLabel"
+        class="flex flex-col items-center justify-center min-h-[48px] min-w-[48px] py-1 px-1 rounded-xl transition-all relative group"
         :class="isActive(item) 
           ? 'text-orange-400 font-bold' 
-          : 'text-slate-400 hover:text-slate-200 font-medium'"
+          : 'text-[#cbd5e1] hover:text-white font-medium'"
       >
         <!-- Active Background Pill Highlight -->
         <span 
@@ -59,33 +57,88 @@ function isActive(item: NavItem): boolean {
           class="absolute inset-0 bg-gradient-to-b from-orange-500/15 to-transparent rounded-xl pointer-events-none border border-orange-500/30 shadow-[0_0_12px_rgba(249,115,22,0.2)]"
         />
 
-        <!-- Icon with optional live pulse dot -->
+        <!-- Icon with explicit width & height -->
         <div class="relative mb-0.5">
-          <component 
-            :is="item.icon" 
-            class="w-5 h-5 transition-transform duration-200 group-active:scale-90"
-            :class="isActive(item) ? 'text-orange-400 drop-shadow-[0_0_8px_rgba(249,115,22,0.6)]' : 'text-slate-400'"
-          />
+          <svg
+            v-if="item.name === 'home'"
+            class="w-5 h-5"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <svg
+            v-else-if="item.name === 'live'"
+            class="w-5 h-5"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>
+          </svg>
+          <svg
+            v-else-if="item.name === 'scores'"
+            class="w-5 h-5"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+          </svg>
+          <svg
+            v-else-if="item.name === 'schedules'"
+            class="w-5 h-5"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>
+          </svg>
+          <svg
+            v-else
+            class="w-5 h-5"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>
+          </svg>
+
           <!-- Live Indicator Dot -->
           <span 
             v-if="item.isLive" 
             class="absolute -top-1 -right-1 flex h-2 w-2"
           >
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-90"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500 shadow-[0_0_6px_#ef4444]"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
           </span>
         </div>
 
         <!-- Label -->
-        <span class="text-[10px] tracking-tight leading-none">
+        <span class="text-[11px] tracking-tight leading-none">
           {{ item.label }}
         </span>
-
-        <!-- Active Dot under Label -->
-        <span 
-          v-if="isActive(item)" 
-          class="w-1 h-1 rounded-full bg-orange-400 mt-0.5 shadow-[0_0_4px_#f97316]"
-        />
       </NuxtLink>
     </div>
   </nav>

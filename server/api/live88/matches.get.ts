@@ -6,11 +6,16 @@ export default defineEventHandler(async (event) => {
   const leagueId = query.leagueId ? String(query.leagueId).toLowerCase() : '';
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
-  setResponseHeaders(event, {
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0'
-  });
+  setResponseHeaders(
+    event,
+    refresh
+      ? {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      : {
+          'Cache-Control': 'public, max-age=10, s-maxage=15, stale-while-revalidate=30'
+        }
+  );
 
   try {
     const data = await fetchLocalSportsData(refresh);
@@ -23,6 +28,7 @@ export default defineEventHandler(async (event) => {
     }
     return {
       code: 0,
+      generatedAt: data.generatedAt,
       data: matches
     };
   } catch (err: any) {
@@ -30,3 +36,4 @@ export default defineEventHandler(async (event) => {
     return { code: 200, data: [] };
   }
 });
+

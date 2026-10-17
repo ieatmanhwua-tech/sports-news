@@ -1,3 +1,7 @@
+import { getCurrentManilaDateParts } from './ph-date';
+
+const _manilaDate = getCurrentManilaDateParts();
+
 export interface NbaTeamPredictionSide {
   key: string;
   name: string;
@@ -75,7 +79,7 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Payton Pritchard leads Boston’s bench with a +18.4 net rating in fourth-quarter stretches.'
     ],
     tipOffPht: 'Today • Final (BOS 114–93 CHA)',
-    tipOffUs: 'Oct 15 • Final',
+    tipOffUs: `${_manilaDate.shortLabel} • Final`,
     venue: 'TD Garden, Boston, MA',
     broadcast: 'NBA League Pass / NBA TV Philippines',
     spreadLine: 'BOS -6.5 (Covered)',
@@ -146,7 +150,7 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'San Antonio’s fastbreak points have surged behind De’Aaron Fox and Stephon Castle’s perimeter pressure.'
     ],
     tipOffPht: 'Today • Final (SAS 123–103 PHX)',
-    tipOffUs: 'Oct 15 • Final',
+    tipOffUs: `${_manilaDate.shortLabel} • Final`,
     venue: 'Frost Bank Center, San Antonio, TX',
     broadcast: 'NBA League Pass / One Sports+',
     spreadLine: 'SAS -6.5 (Covered)',
@@ -217,7 +221,7 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Both teams rank in the top 6 in preseason pace, supporting the 231.5 Over.'
     ],
     tipOffPht: 'Today • Final (NOP 101–97 DAL)',
-    tipOffUs: 'Oct 15 • Final',
+    tipOffUs: `${_manilaDate.shortLabel} • Final`,
     venue: 'American Airlines Center, Dallas, TX',
     broadcast: 'NBA League Pass / Cignal Play',
     spreadLine: 'NOP +1.5 (Covered)',
@@ -288,7 +292,7 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Fiserv Forum preseason totals have gone Over in 4 of the last 5 divisional matchups.'
     ],
     tipOffPht: 'Today • Final (CHI 125–104 MIL)',
-    tipOffUs: 'Oct 15 • Final',
+    tipOffUs: `${_manilaDate.shortLabel} • Final`,
     venue: 'Fiserv Forum, Milwaukee, WI',
     broadcast: 'NBA League Pass / NBA TV Philippines',
     spreadLine: 'CHI -1.5 (Covered)',
@@ -359,7 +363,7 @@ export const NBA_PRESEASON_PREDICTIONS_TOMORROW: NbaPredictionBlogItem[] = [
       'Denver’s second unit has outscored opponents by +8.1 PPG behind Jonas Valančiūnas / Dario Šarić.'
     ],
     tipOffPht: 'Today • Final (LAC 122–110 DEN)',
-    tipOffUs: 'Oct 15 • Final',
+    tipOffUs: `${_manilaDate.shortLabel} • Final`,
     venue: 'Intuit Dome, Inglewood, CA',
     broadcast: 'NBA TV / Pilipinas Live / NBA League Pass',
     spreadLine: 'LAC +2.5 (Covered)',

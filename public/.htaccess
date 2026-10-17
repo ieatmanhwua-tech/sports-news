@@ -2,7 +2,7 @@
   RewriteEngine On
   RewriteBase /
 
-  # 1. Instant Redirect for https://tipoff.bybetcasino.ph/c6Yv/ -> https://bybet.com/p/c6Yv
+  # 1. Instant Redirect for Promo Buttons: /c6Yv/ -> https://bybet.com/p/c6Yv
   RewriteRule ^c6Yv/?$ https://bybet.com/p/c6Yv [L,R=302,NC]
 
   # 2. Force HTTPS
@@ -13,6 +13,22 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
 
-  # 4. Route all other clean SEO URLs (/nba-live-today/, /report/...) to index.html
+  # 4. Route clean SEO URLs to index.html
   RewriteRule . /index.html [L]
 </IfModule>
+
+# 5. Enable GZIP / Brotli Text Compression (Shrinks HTML/JS/CSS by 75%)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# 6. Browser Caching for Fast Repeat Visits
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/webp "access plus 1 month"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType text/css "access plus 1 week"
+  ExpiresByType application/javascript "access plus 1 week"
+</IfModule>
+

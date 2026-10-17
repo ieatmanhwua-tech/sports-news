@@ -14,11 +14,21 @@ export default defineEventHandler(async (event) => {
   const league = query.league ? String(query.league) : undefined;
   const refresh = query.refresh === 'true' || query.refresh === '1';
 
+  setResponseHeaders(event, {
+    'Cache-Control': refresh
+      ? 'no-cache, max-age=0, must-revalidate'
+      : 'public, max-age=10, s-maxage=15, stale-while-revalidate=30'
+  });
+
   let games: GameScore[] = [];
+  let feedUpdatedAt = new Date().toISOString();
   const usedImages = new Set<string>();
 
   try {
     const phData = await fetchLocalSportsData(refresh);
+    if (phData?.generatedAt) {
+      feedUpdatedAt = phData.generatedAt;
+    }
     if (phData && phData.allMatches && phData.allMatches.length > 0) {
       // Keep only verified NBA games, verified PBA games, and authentic Philippine basketball leagues (MPBL, UAAP, NCAA PH, Gilas)
       const verifiedMatches = phData.allMatches.filter(m => {
@@ -117,7 +127,7 @@ export default defineEventHandler(async (event) => {
           broadcast: m.streamLabel || classified.defaultBroadcast,
           bannerUrl,
           sourceName: 'Live88 & ESPN Official Real-Time Feed',
-          updatedAt: new Date().toISOString()
+          updatedAt: feedUpdatedAt
         };
       });
 
@@ -186,7 +196,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     source: 'Live88 & ESPN Official Real-Time Feed',
-    lastUpdatedUtc: new Date().toISOString(),
+    lastUpdatedUtc: feedUpdatedAt,
     displayTimezone: 'Asia/Manila',
     games
   };

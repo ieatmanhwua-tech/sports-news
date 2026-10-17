@@ -6,9 +6,21 @@ export default defineEventHandler(async (event) => {
   const league = query.league ? String(query.league).toLowerCase() : undefined;
   const status = query.status ? String(query.status).toLowerCase() : undefined;
   const refresh = query.refresh === 'true' || query.refresh === '1';
+  const mode = query.mode === 'scores' ? 'scores' : 'full';
+
+  setResponseHeaders(
+    event,
+    refresh
+      ? {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      : {
+          'Cache-Control': 'public, max-age=10, s-maxage=15, stale-while-revalidate=30'
+        }
+  );
 
   try {
-    const data = await fetchLocalSportsData(refresh);
+    const data = await fetchLocalSportsData(refresh, mode);
 
     let filteredMatches = data.allMatches;
 
@@ -49,4 +61,5 @@ export default defineEventHandler(async (event) => {
     });
   }
 });
+
 

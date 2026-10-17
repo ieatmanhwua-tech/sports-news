@@ -2,6 +2,9 @@ import { ArticleRepository } from '../../utils/repository';
 import type { ContentType } from '../../../shared/types';
 
 export default defineEventHandler(async (event) => {
+  setResponseHeaders(event, {
+    'Cache-Control': 'public, max-age=10, s-maxage=15, stale-while-revalidate=60'
+  });
   const query = getQuery(event);
 
   const categorySlug = query.category ? String(query.category) : undefined;

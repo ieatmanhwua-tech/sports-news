@@ -9,9 +9,19 @@ const props = defineProps<{
 
 const { formatManilaDate } = useFormatters();
 
+const leadImageSrcset = computed(() => {
+  const url = String(props.article.featuredImageUrl || '');
+  if (url.startsWith('/img/articles/') && (url.endsWith('.webp') || url.endsWith('.jpg'))) {
+    const base = url.replace(/\.(webp|jpg)$/, '');
+    return `${base}-640w.webp 640w, ${url} 1200w`;
+  }
+  return undefined;
+});
+
 function onLeadImgError(e: Event) {
   const img = e.target as HTMLImageElement | null;
   if (!img) return;
+  img.removeAttribute('srcset');
   const parts = String(props.article.title || '').split(/\s+vs\.?\s+|\s+Defeat\s+|\s+Outduels\s+|\s+Edge\s+/i);
   const away = (parts[0] || props.article.category?.name || 'TipOff PH').replace(/^LIVE BLOG:\s*/i, '').slice(0, 22).trim();
   const home = (parts[1] || 'Official Coverage').split(/[:(—]/)[0]?.slice(0, 22).trim() || 'Basketball';
@@ -29,8 +39,14 @@ function onLeadImgError(e: Event) {
     <NuxtLink :to="`/news/${article.slug}`" class="block aspect-video w-full overflow-hidden bg-slate-950 relative">
       <img 
         :src="article.featuredImageUrl" 
+        :srcset="leadImageSrcset"
+        sizes="(max-width: 768px) 100vw, 800px"
         :alt="article.imageAlt || article.title"
+        width="1200"
+        height="675"
         loading="eager"
+        fetchpriority="high"
+        decoding="async"
         referrerpolicy="no-referrer"
         @error="onLeadImgError"
         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"

@@ -15,38 +15,36 @@ import { ArrowRight, Flame, Trophy, Globe, GraduationCap, ShieldAlert } from 'lu
 
 const todayBlogLeagueFilter = ref<'all' | 'nba' | 'pba' | 'mpbl' | 'collegiate'>('all');
 
-// Server-side asynchronous data fetching with Nuxt 3 useAsyncData
-const { data: homeData, error } = await useAsyncData('home-feed', async () => {
-  const [
-    breakingRes,
-    featuredRes,
-    latestRes,
-    pbaRes,
-    mpblRes,
-    collegiateRes,
-    gilasRes,
-    scoresRes
-  ] = await Promise.all([
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { breaking: 'true', limit: 1 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { featured: 'true', limit: 1 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { limit: 8 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { category: 'pba-news', limit: 4 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { category: 'mpbl-news', limit: 4 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { topic: 'uaap-basketball', limit: 4 } }),
-    $fetch<{ articles: Article[] }>('/api/articles', { query: { category: 'gilas-pilipinas', limit: 4 } }),
-    $fetch<{ games: GameScore[] }>('/api/scores')
-  ]);
+// Server-side asynchronous data fetching consolidated into a single fast /api/home-feed call
+const { data: homeData, error, refresh: refreshHomeFeed } = await useAsyncData('home-feed', async () => {
+  return await $fetch<{
+    manilaDate?: string;
+    manilaDateLabel?: string;
+    breaking: Article | null;
+    featured: Article | null;
+    latest: Article[];
+    pba: Article[];
+    mpbl: Article[];
+    collegiate: Article[];
+    gilas: Article[];
+    scores: GameScore[];
+  }>('/api/home-feed');
+});
 
-  return {
-    breaking: breakingRes.articles[0] || null,
-    featured: featuredRes.articles[0] || latestRes.articles[0] || null,
-    latest: latestRes.articles || [],
-    pba: pbaRes.articles || [],
-    mpbl: mpblRes.articles || [],
-    collegiate: collegiateRes.articles || [],
-    gilas: gilasRes.articles || [],
-    scores: scoresRes.games || []
-  };
+let homeBgTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  homeBgTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      void refreshHomeFeed();
+    }
+  }, 30000);
+});
+
+onUnmounted(() => {
+  if (homeBgTimer) {
+    clearInterval(homeBgTimer);
+    homeBgTimer = null;
+  }
 });
 
 const filteredTodayMatchBlogs = computed(() => {
@@ -87,6 +85,14 @@ const filteredTodayMatchBlogs = computed(() => {
 
 function getMatchBlogUrl(game: GameScore): string {
   return `/news/${slugifyTeam(game.awayTeam)}-vs-${slugifyTeam(game.homeTeam)}-match-blog-today`;
+}
+
+function getResponsiveArticleSrcset(src?: string): string | undefined {
+  if (src && src.startsWith('/img/articles/') && src.endsWith('.webp') && !src.endsWith('-640w.webp')) {
+    const smallVariant = src.replace(/\.webp$/, '-640w.webp');
+    return `${smallVariant} 640w, ${src} 1200w`;
+  }
+  return undefined;
 }
 
 function getMatchBlogHeadline(game: GameScore): string {
@@ -251,7 +257,7 @@ useHead({
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <article
-              v-for="game in filteredTodayMatchBlogs"
+              v-for="(game, gameIdx) in filteredTodayMatchBlogs"
               :key="`blog-today-${game.id}`"
               class="group flex flex-col justify-between space-y-3 transition-colors"
             >
@@ -263,9 +269,15 @@ useHead({
                 >
                   <img
                     :src="game.bannerUrl"
+                    :srcset="getResponsiveArticleSrcset(game.bannerUrl)"
+                    :sizes="getResponsiveArticleSrcset(game.bannerUrl) ? '(max-width: 640px) 100vw, 420px' : undefined"
                     :alt="`${game.awayTeam} vs ${game.homeTeam} ${game.league} Match Blog`"
+                    width="640"
+                    height="360"
                     class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    loading="lazy"
+                    :loading="gameIdx === 0 ? 'eager' : 'lazy'"
+                    :fetchpriority="gameIdx === 0 ? 'high' : 'auto'"
+                    decoding="async"
                     referrerpolicy="no-referrer"
                     @error="(e) => handleImageError(e, 'banner', `${game.awayTeam} vs ${game.homeTeam}`, game.league)"
                   />
@@ -275,8 +287,12 @@ useHead({
                   <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2">
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/85 border border-amber-500/40 text-amber-400 text-[9px] sm:text-[10px] font-black uppercase tracking-wider shadow backdrop-blur-xs shrink-0">
                       <img
-                        src="/img/TipOffPh_logo.png"
+                        src="/img/TipOffPh_logo.webp"
                         alt="TipOff Ph"
+                        width="12"
+                        height="12"
+                        loading="lazy"
+                        decoding="async"
                         class="w-3 h-3 object-contain"
                         @error="($event.target as HTMLImageElement).style.display = 'none'"
                       />
@@ -431,9 +447,14 @@ useHead({
                 >
                   <img
                     :src="pred.featuredImageUrl"
+                    :srcset="getResponsiveArticleSrcset(pred.featuredImageUrl)"
+                    :sizes="getResponsiveArticleSrcset(pred.featuredImageUrl) ? '(max-width: 640px) 100vw, 420px' : undefined"
                     :alt="pred.blogTitle"
+                    width="640"
+                    height="360"
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     loading="lazy"
+                    decoding="async"
                   />
                   <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent"></div>
                   <span class="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black uppercase">
@@ -441,13 +462,13 @@ useHead({
                   </span>
                   <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-xs font-black text-white">
                     <span class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1">
-                      <img :src="pred.awayTeam.logoUrl" :alt="pred.awayTeam.abbr" class="w-4 h-4 object-contain" />
+                      <img :src="pred.awayTeam.logoUrl" :alt="pred.awayTeam.abbr" width="16" height="16" loading="lazy" decoding="async" class="w-4 h-4 object-contain" />
                       {{ pred.awayTeam.shortName }}
                     </span>
                     <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-mono text-[11px]">{{ pred.predictedScore.away }}–{{ pred.predictedScore.home }}</span>
                     <span class="flex items-center gap-1.5 bg-slate-950/85 border border-slate-700/80 rounded-lg px-2 py-1">
                       {{ pred.homeTeam.shortName }}
-                      <img :src="pred.homeTeam.logoUrl" :alt="pred.homeTeam.abbr" class="w-4 h-4 object-contain" />
+                      <img :src="pred.homeTeam.logoUrl" :alt="pred.homeTeam.abbr" width="16" height="16" loading="lazy" decoding="async" class="w-4 h-4 object-contain" />
                     </span>
                   </div>
                 </NuxtLink>
