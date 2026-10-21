@@ -3,6 +3,7 @@ import { CATEGORIES_REGISTRY, CATEGORY_MAP, PARENT_CATEGORY_ALIASES } from '../.
 import type { Article, Author, CategoryInfo, ContactSubmission, ContentType, ArticleStatus } from '../../shared/types';
 import { ensureTodaysMatchBlogsSynced, buildFallbackMatchBlogForSlug, registerArticlesUpdatedHook } from './match-blogs';
 import { ensureFreshManilaPublishIso } from '../../shared/ph-date';
+import { indexSingleArticleNow } from './gsc-indexing';
 
 const QUERY_CACHE_TTL_MS = 30 * 1000;
 const publicArticlesQueryCache = new Map<string, { timestamp: number; result: { articles: Article[]; total: number } }>();
@@ -270,7 +271,7 @@ export class ArticleRepository {
         return { article: null, redirectSlug: redirectedTo };
       }
 
-      const normalizedTarget = lowerSlug.replace(/-highlights-box-score$/, '-match-blog-today');
+      const normalizedTarget = lowerSlug.replace(/-(?:highlights-box-score|prediction-odds-picks)$/, '-match-blog-today');
       const altTarget = lowerSlug.replace(/-match-blog-today$/, '-highlights-box-score');
 
       let article = inMemoryStore.articles.find(a => {
@@ -557,6 +558,10 @@ export class ArticleRepository {
       } catch (err: any) {
         console.warn('[Database] MySQL write mirror skipped, article saved in integrated store:', err?.message);
       }
+    }
+
+    if (savedArticle.status === 'published') {
+      void indexSingleArticleNow(savedArticle).catch(() => {});
     }
 
     return savedArticle;

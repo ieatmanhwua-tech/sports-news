@@ -21,6 +21,8 @@ const router = useRouter();
 const user = ref<any>(null);
 const articles = ref<Article[]>([]);
 const dbStatus = ref<any>(null);
+const gscSummary = ref<any>(null);
+const isSyncingGsc = ref(false);
 const isLoading = ref(true);
 
 onMounted(async () => {
@@ -28,19 +30,39 @@ onMounted(async () => {
     const authRes = await $fetch<{ authenticated: boolean; user: any }>('/api/admin/me');
     user.value = authRes.user;
 
-    const [artRes, statRes] = await Promise.all([
+    const [artRes, statRes, gscRes] = await Promise.all([
       $fetch<{ articles: Article[] }>('/api/admin/articles'),
-      $fetch<any>('/api/status')
+      $fetch<any>('/api/status'),
+      $fetch<any>('/api/admin/indexing').catch(() => null)
     ]);
 
     articles.value = artRes.articles;
     dbStatus.value = statRes;
+    gscSummary.value = gscRes;
   } catch (err: any) {
     router.push('/admin/login');
   } finally {
     isLoading.value = false;
   }
 });
+
+async function triggerManualGscSync() {
+  if (isSyncingGsc.value) return;
+  isSyncingGsc.value = true;
+  try {
+    const res = await $fetch<any>('/api/admin/indexing', {
+      method: 'POST',
+      body: { action: 'sync_all' }
+    });
+    if (res?.summary) {
+      gscSummary.value = res.summary;
+    }
+  } catch {
+    // ignore error
+  } finally {
+    isSyncingGsc.value = false;
+  }
+}
 
 async function handleLogout() {
   await $fetch('/api/admin/logout', { method: 'POST' });
@@ -261,6 +283,92 @@ useHead({
             </div>
           </NuxtLink>
         </div>
+      </div>
+    </section>
+
+    <!-- Google Search Console Automated Indexing (Predictions & Post-Game Blogs) -->
+    <section v-if="gscSummary" class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 border border-emerald-500/30 rounded-2xl p-6 shadow-[0_4px_30px_rgba(0,0,0,0.6)] space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div class="space-y-1">
+          <div class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+            <CheckCircle class="w-3.5 h-3.5" />
+            <span>GSC Automated Indexing Active ({{ gscSummary.permissionLevel || 'siteOwner' }})</span>
+          </div>
+          <h2 class="text-base sm:text-lg font-black text-white">
+            Automated Google Indexing — Pre-Game Predictions &amp; After-Game Recaps
+          </h2>
+          <p class="text-xs text-slate-400 font-mono">
+            Service Account: <span class="text-emerald-300">{{ gscSummary.serviceAccountEmail }}</span> • Property: <span class="text-cyan-300">{{ gscSummary.siteUrl }}</span>
+          </p>
+        </div>
+
+        <button
+          type="button"
+          :disabled="isSyncingGsc"
+          @click="triggerManualGscSync"
+          class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shrink-0"
+        >
+          {{ isSyncingGsc ? 'Indexing & Syncing GSC...' : 'Sync & Index Blogs Now' }}
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+          <div class="text-[10px] font-bold uppercase text-slate-400">Total URLs Indexed</div>
+          <div class="text-xl font-black text-white mt-0.5">{{ gscSummary.stats?.totalIndexed || 0 }}</div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+          <div class="text-[10px] font-bold uppercase text-amber-400">Pre-Game Prediction Blogs</div>
+          <div class="text-xl font-black text-amber-300 mt-0.5">{{ gscSummary.stats?.predictionBlogsIndexed || 0 }}</div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+          <div class="text-[10px] font-bold uppercase text-emerald-400">After-Game Recap Blogs</div>
+          <div class="text-xl font-black text-emerald-300 mt-0.5">{{ gscSummary.stats?.postGameBlogsIndexed || 0 }}</div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+          <div class="text-[10px] font-bold uppercase text-cyan-400">GSC Sitemaps Synced</div>
+          <div class="text-xl font-black text-cyan-300 mt-0.5">{{ gscSummary.sitemaps?.length || 2 }}</div>
+        </div>
+      </div>
+
+      <div v-if="gscSummary.recentRecords?.length" class="overflow-x-auto max-h-60 border border-slate-800/90 rounded-xl">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-900/90 border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+              <th class="py-2 px-3">Type</th>
+              <th class="py-2 px-3">Automated Blog Title &amp; Canonical URL</th>
+              <th class="py-2 px-3">GSC Status</th>
+              <th class="py-2 px-3 text-right">Submitted (UTC)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/70">
+            <tr v-for="rec in gscSummary.recentRecords.slice(0, 12)" :key="rec.phaseKey" class="hover:bg-slate-800/40">
+              <td class="py-2 px-3 whitespace-nowrap">
+                <span
+                  class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                  :class="rec.category === 'post-game-recap' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'"
+                >
+                  {{ rec.category === 'post-game-recap' ? 'AFTER-GAME RECAP' : rec.category === 'live-blog' ? 'LIVE BLOG' : 'PREDICTION BLOG' }}
+                </span>
+              </td>
+              <td class="py-2 px-3">
+                <div class="font-bold text-white truncate max-w-md">{{ rec.title }}</div>
+                <div class="text-[11px] text-slate-400 font-mono truncate max-w-md">{{ rec.url }}</div>
+              </td>
+              <td class="py-2 px-3 whitespace-nowrap">
+                <span
+                  class="text-[10px] font-bold px-2 py-0.5 rounded"
+                  :class="rec.status === 'indexed' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'"
+                >
+                  {{ rec.status === 'indexed' ? `HTTP ${rec.httpStatus || 200} URL_UPDATED` : `ERR ${rec.httpStatus || ''}` }}
+                </span>
+              </td>
+              <td class="py-2 px-3 text-right font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                {{ rec.lastSubmittedAt?.slice(0, 19).replace('T', ' ') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 

@@ -9,6 +9,10 @@ node_modules
 # Environment secrets
 .env
 *.local
+server/config/*.json
+*service-account*.json
+.aistudio
+public/assets/aistudio/
 
 # Logs
 npm-debug.log*
