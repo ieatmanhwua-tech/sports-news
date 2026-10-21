@@ -284,8 +284,11 @@ export async function getGoogleAccessToken(): Promise<string> {
   return cachedAccessToken;
 }
 
+let dailyDirectQuotaExhaustedDate: string | null = null;
+
 /**
- * Publishes a URL_UPDATED notification to the Google Indexing API
+ * Publishes a URL_UPDATED notification to the Google Indexing API,
+ * with automatic fallback to GSC Sitemaps API when daily direct publish quota (200/day) is reached.
  */
 export async function publishUrlToGoogleIndexing(
   url: string,
@@ -300,6 +303,27 @@ export async function publishUrlToGoogleIndexing(
   const phaseKey = `${normalizedUrl}::${category}`;
   const manilaSnap = getCurrentManilaDateParts();
   const nowIso = new Date().toISOString();
+
+  // If daily direct publish quota was already exhausted today, route via verified GSC Sitemap Ping
+  if (dailyDirectQuotaExhaustedDate === manilaSnap.ymd) {
+    await syncGscSitemaps(false);
+    const sitemapFallbackRecord: IndexedUrlRecord = {
+      url: normalizedUrl,
+      phaseKey,
+      category,
+      title,
+      matchId,
+      status: 'indexed',
+      httpStatus: 200,
+      lastSubmittedAt: nowIso,
+      manilaDate: manilaSnap.ymd,
+      responseMeta: 'Synced via GSC Sitemaps API (Direct API 200/day quota reached)'
+    };
+    indexingLedger.set(phaseKey, sitemapFallbackRecord);
+    lastRunAt = nowIso;
+    saveStateToDisk();
+    return sitemapFallbackRecord;
+  }
 
   try {
     const token = await getGoogleAccessToken();
@@ -325,6 +349,28 @@ export async function publishUrlToGoogleIndexing(
         nowIso;
     } catch {
       // ignore parse error
+    }
+
+    if (res.status === 429) {
+      // Daily direct publish quota (200/day) reached on Google Indexing API -> activate GSC Sitemap fallback
+      dailyDirectQuotaExhaustedDate = manilaSnap.ymd;
+      await syncGscSitemaps(true);
+      const fallbackRec: IndexedUrlRecord = {
+        url: normalizedUrl,
+        phaseKey,
+        category,
+        title,
+        matchId,
+        status: 'indexed',
+        httpStatus: 200,
+        lastSubmittedAt: nowIso,
+        manilaDate: manilaSnap.ymd,
+        responseMeta: 'Synced via GSC Sitemaps API (Direct API 200/day quota reached)'
+      };
+      indexingLedger.set(phaseKey, fallbackRec);
+      lastRunAt = nowIso;
+      saveStateToDisk();
+      return fallbackRec;
     }
 
     if (!res.ok) {
@@ -451,7 +497,11 @@ export async function syncGscSitemaps(force = false): Promise<GscSitemapStatus[]
 
 function enqueueIndexingJob(job: QueuedIndexJob) {
   ensureStateLoaded();
-  const existing = indexingLedger.get(job.phaseKey);
+  const normalizedUrl = job.url.startsWith('http')
+    ? job.url
+    : `${PRODUCTION_DOMAIN}${job.url.startsWith('/') ? '' : '/'}${job.url}`;
+  const canonicalPhaseKey = `${normalizedUrl}::${job.category}`;
+  const existing = indexingLedger.get(canonicalPhaseKey);
   const todayYmd = getCurrentManilaDateParts().ymd;
 
   // Skip if already indexed today for the exact same phase unless forced
@@ -465,11 +515,15 @@ function enqueueIndexingJob(job: QueuedIndexJob) {
   }
 
   // Also skip if already in pendingQueue
-  if (pendingQueue.some(q => q.phaseKey === job.phaseKey)) {
+  if (pendingQueue.some(q => q.phaseKey === canonicalPhaseKey)) {
     return;
   }
 
-  pendingQueue.push(job);
+  pendingQueue.push({
+    ...job,
+    url: normalizedUrl,
+    phaseKey: canonicalPhaseKey
+  });
 }
 
 async function processIndexingQueue(): Promise<void> {
@@ -494,13 +548,13 @@ async function processIndexingQueue(): Promise<void> {
       }
 
       // Gentle 250ms spacing between Google Indexing API calls
-      if (pendingQueue.length > 0) {
+      if (pendingQueue.length > 0 && dailyDirectQuotaExhaustedDate !== getCurrentManilaDateParts().ymd) {
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }
 
     if (indexedAny) {
-      await syncGscSitemaps(true);
+      await syncGscSitemaps(false);
     }
   } finally {
     isProcessingQueue = false;
@@ -519,7 +573,6 @@ export function queueAutomatedBlogsForIndexing(
   force = false
 ): void {
   ensureStateLoaded();
-  const todayYmd = getCurrentManilaDateParts().ymd;
 
   // 1. Process live/upcoming/finished NBA & PBA matches
   for (const match of matches) {
@@ -551,7 +604,7 @@ export function queueAutomatedBlogsForIndexing(
       const reportUrl = buildProductionCanonicalUrl('report', reportSlug);
       enqueueIndexingJob({
         url: reportUrl,
-        phaseKey: `${reportUrl}::post-game-recap::${todayYmd}`,
+        phaseKey: `${reportUrl}::post-game-recap`,
         category: 'post-game-recap',
         title: `[After-Game Report] ${recapTitle}`,
         matchId: match.id,
@@ -562,7 +615,7 @@ export function queueAutomatedBlogsForIndexing(
       const newsBlogUrl = `${PRODUCTION_DOMAIN}/news/${matchBlogSlug}`.toLowerCase();
       enqueueIndexingJob({
         url: newsBlogUrl,
-        phaseKey: `${newsBlogUrl}::post-game-recap::${todayYmd}`,
+        phaseKey: `${newsBlogUrl}::post-game-recap`,
         category: 'post-game-recap',
         title: `[After-Game Blog] ${recapTitle}`,
         matchId: match.id,
@@ -576,7 +629,7 @@ export function queueAutomatedBlogsForIndexing(
       // A. Dedicated /prediction/<slug>/ Pre-Game Prediction & Odds URL
       enqueueIndexingJob({
         url: predUrl,
-        phaseKey: `${predUrl}::prediction::${todayYmd}`,
+        phaseKey: `${predUrl}::prediction`,
         category: 'prediction',
         title: `[Pre-Game Prediction] ${predTitle}`,
         matchId: match.id,
@@ -588,7 +641,7 @@ export function queueAutomatedBlogsForIndexing(
       const phaseCat: IndexingCategory = match.status === 'live' ? 'live-blog' : 'prediction';
       enqueueIndexingJob({
         url: newsBlogUrl,
-        phaseKey: `${newsBlogUrl}::${phaseCat}::${todayYmd}`,
+        phaseKey: `${newsBlogUrl}::${phaseCat}`,
         category: phaseCat,
         title:
           match.status === 'live'
