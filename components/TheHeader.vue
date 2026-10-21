@@ -69,15 +69,15 @@ const primaryNav = [
             <span class="tracking-wide">PH Live Sports &amp; Streams</span>
           </NuxtLink>
           <span class="text-slate-600 hidden sm:inline" aria-hidden="true">|</span>
-          <NuxtLink to="/scores-and-schedules" class="hover:text-amber-400 transition-colors flex items-center gap-1 font-medium text-slate-300">
+          <a href="https://nbaoddsbetting.com/" target="_blank" rel="noopener noreferrer" class="hover:text-amber-400 transition-colors flex items-center gap-1 font-medium text-slate-300">
             <Calendar class="w-3.5 h-3.5 text-[#E67E22]" />
             Scores &amp; Schedules
-          </NuxtLink>
+          </a>
           <span class="text-slate-600" aria-hidden="true">|</span>
-          <NuxtLink to="/nba-odds" class="hover:text-amber-400 transition-colors flex items-center gap-1 text-slate-300 font-medium">
+          <a href="https://nbaoddsbetting.com/" target="_blank" rel="noopener noreferrer" class="hover:text-amber-400 transition-colors flex items-center gap-1 text-slate-300 font-medium">
             <TrendingUp class="w-3.5 h-3.5 text-amber-400" />
             NBA Odds
-          </NuxtLink>
+          </a>
           <span class="text-slate-600 hidden md:inline" aria-hidden="true">|</span>
           <NuxtLink to="/rumors-and-trades" class="hover:text-amber-400 transition-colors hidden md:flex items-center gap-1 text-slate-300">
             <Flame class="w-3.5 h-3.5 text-amber-500" />
