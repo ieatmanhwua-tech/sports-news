@@ -53,6 +53,9 @@ export interface Article {
   publishedAt: string; // ISO 8601 UTC string
   updatedAt?: string;   // ISO 8601 UTC string for substantive updates
   createdAt: string;
+  automationFormat?: 'breaking-news' | 'game-recap' | 'investigative-analysis';
+  wordCount?: number;
+  seoStrategyBadge?: string;
 
   // Joined fields
   category?: CategoryInfo;

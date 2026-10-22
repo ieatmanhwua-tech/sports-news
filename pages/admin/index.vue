@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Article } from '~/shared/types';
+import {
+  AUTOMATION_BLOG_FORMAT_RULES,
+  countArticleWords,
+  detectFormatRuleFromWordCount,
+  getAutomationFormatRuleById
+} from '~/shared/blog-automation-rules';
 import { 
   FileText, 
   Plus, 
@@ -372,6 +378,55 @@ useHead({
       </div>
     </section>
 
+    <!-- Automated Blog SEO Format & Optimal Word Count Rules Table -->
+    <section class="bg-gradient-to-br from-[#0c1222]/95 via-[#0e172c]/90 to-[#090e1c]/95 border border-amber-500/35 rounded-2xl p-6 shadow-[0_4px_30px_rgba(0,0,0,0.6)] space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider mb-1">
+            <Sparkles class="w-3.5 h-3.5" />
+            <span>Active Automation Blog Rules</span>
+          </div>
+          <h2 class="text-base sm:text-lg font-black text-white">
+            Automated Blog News Formats, Optimal Word Counts &amp; SEO Strategy
+          </h2>
+          <p class="text-xs text-slate-400">
+            Enforced across all automated live game updates, post-game recaps, and pre-game investigative analysis blogs.
+          </p>
+        </div>
+        <NuxtLink
+          to="/admin/post"
+          class="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-black transition-colors shrink-0"
+        >
+          Open Story Publisher &rarr;
+        </NuxtLink>
+      </div>
+
+      <div class="overflow-x-auto border border-slate-800 rounded-xl">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-900/95 border-b border-slate-800 text-slate-300 uppercase text-[10px] tracking-wider">
+              <th class="py-2.5 px-3.5 font-black">News Format</th>
+              <th class="py-2.5 px-3.5 font-black">Optimal Word Count</th>
+              <th class="py-2.5 px-3.5 font-black">SEO Purpose &amp; Strategy</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/80">
+            <tr v-for="rule in AUTOMATION_BLOG_FORMAT_RULES" :key="rule.id" class="hover:bg-slate-800/40">
+              <td class="py-3 px-3.5 font-black text-white whitespace-nowrap">
+                {{ rule.newsFormat }}
+              </td>
+              <td class="py-3 px-3.5 font-mono font-bold text-amber-300 whitespace-nowrap">
+                {{ rule.optimalWordCountLabel }}
+              </td>
+              <td class="py-3 px-3.5 text-slate-300 leading-relaxed">
+                {{ rule.seoPurposeAndStrategy }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Recent Editorial Queue Table -->
     <section class="bg-gradient-to-br from-[#0c1222]/90 via-[#0e172c]/85 to-[#090e1c]/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-6 shadow-[0_4px_30px_rgba(0,0,0,0.6)] ring-1 ring-cyan-500/20">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
@@ -389,17 +444,25 @@ useHead({
           <thead>
             <tr class="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
               <th class="py-2.5 px-3">Title &amp; Category</th>
+              <th class="py-2.5 px-3">SEO Format &amp; Word Count</th>
               <th class="py-2.5 px-3">Status</th>
-              <th class="py-2.5 px-3">Type</th>
               <th class="py-2.5 px-3">Published Date (UTC)</th>
               <th class="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/80">
-            <tr v-for="art in articles.slice(0, 8)" :key="art.id" class="hover:bg-slate-800/50 transition-colors">
+            <tr v-for="art in articles.slice(0, 10)" :key="art.id" class="hover:bg-slate-800/50 transition-colors">
               <td class="py-3 px-3">
                 <div class="font-bold text-white truncate max-w-md">{{ art.title }}</div>
                 <div class="text-[11px] text-slate-400 mt-0.5">/news/{{ art.slug }}</div>
+              </td>
+              <td class="py-3 px-3">
+                <div class="font-bold text-amber-300 text-[11px]">
+                  {{ (art.automationFormat ? getAutomationFormatRuleById(art.automationFormat) : detectFormatRuleFromWordCount(art.wordCount || countArticleWords(art.body))).newsFormat }}
+                </div>
+                <div class="text-[10px] font-mono text-slate-400">
+                  {{ (art.wordCount || countArticleWords(art.body)).toLocaleString() }} words (Target: {{ (art.automationFormat ? getAutomationFormatRuleById(art.automationFormat) : detectFormatRuleFromWordCount(art.wordCount || countArticleWords(art.body))).optimalWordCountLabel }})
+                </div>
               </td>
               <td class="py-3 px-3">
                 <span 
@@ -414,7 +477,6 @@ useHead({
                   {{ art.status }}
                 </span>
               </td>
-              <td class="py-3 px-3 capitalize text-slate-300">{{ art.contentType }}</td>
               <td class="py-3 px-3 text-slate-400 font-mono text-[11px]">{{ art.publishedAt }}</td>
               <td class="py-3 px-3 text-right space-x-2">
                 <NuxtLink :to="`/admin/articles/${art.id}`" class="text-orange-400 font-bold hover:underline">

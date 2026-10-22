@@ -5,6 +5,7 @@ import { getSvgBlogArticleCover } from '~/shared/image-resolver';
 import ShareButtons from '~/components/ShareButtons.vue';
 import ArticleCard from '~/components/ArticleCard.vue';
 import AdUnit from '~/components/AdUnit.vue';
+import { countArticleWords, detectFormatRuleFromWordCount, getAutomationFormatRuleById } from '~/shared/blog-automation-rules';
 import { ChevronRight, Calendar, User, ExternalLink, ShieldCheck, Clock } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -49,8 +50,20 @@ const typeBadge = computed(() => {
     case 'rumor': return { label: 'Attributed Rumor', desc: 'Sourced from league insiders and subject to team/league confirmation' };
     case 'editorial': return { label: 'Editorial / Opinion', desc: 'Represents the analytical viewpoints of the columnist' };
     case 'interview': return { label: 'Player Interview', desc: 'Direct 1-on-1 on-record conversation' };
+    case 'analysis': return { label: 'Investigative Feature & Analysis', desc: 'Deep E-E-A-T tactical and statistical breakdown' };
     default: return { label: 'Reported News', desc: 'Fact-checked sports reporting' };
   }
+});
+
+const articleWordCount = computed(() => {
+  return article.value.wordCount || countArticleWords(article.value.body);
+});
+
+const articleFormatRule = computed(() => {
+  if (article.value.automationFormat) {
+    return getAutomationFormatRuleById(article.value.automationFormat);
+  }
+  return detectFormatRuleFromWordCount(articleWordCount.value);
 });
 
 // JSON-LD Schema.org NewsArticle + BreadcrumbList + Organization
@@ -195,10 +208,18 @@ function onHeroImgError(e: Event) {
               'bg-amber-500/20 text-amber-300 border-amber-500/40': article.contentType === 'rumor',
               'bg-indigo-500/20 text-indigo-300 border-indigo-500/40': article.contentType === 'editorial',
               'bg-emerald-500/20 text-emerald-300 border-emerald-500/40': article.contentType === 'interview',
+              'bg-cyan-500/20 text-cyan-300 border-cyan-500/40': article.contentType === 'analysis',
               'bg-slate-800 text-slate-300 border-slate-700': article.contentType === 'news'
             }"
           >
             {{ typeBadge.label }}
+          </span>
+          <span class="text-slate-600" aria-hidden="true">·</span>
+          <span
+            class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-amber-400/40 text-amber-300"
+            :title="articleFormatRule.seoPurposeAndStrategy"
+          >
+            {{ articleFormatRule.newsFormat }} ({{ articleFormatRule.optimalWordCountLabel }} • {{ articleWordCount.toLocaleString() }}w)
           </span>
         </div>
 
@@ -278,10 +299,15 @@ function onHeroImgError(e: Event) {
               {{ paragraph.replace('## ', '') }}
             </h3>
             <blockquote v-else-if="paragraph.startsWith('> ')" class="border-l-4 border-orange-500 pl-4 italic text-slate-200 my-5 bg-orange-500/10 py-3 rounded-r-lg">
-              {{ paragraph.replace('> ', '') }}
+              {{ paragraph.replace(/^>\s*/gm, '') }}
             </blockquote>
+            <ul v-else-if="paragraph.trim().startsWith('- ')" class="list-disc list-inside space-y-2 bg-slate-900/75 border border-slate-800 rounded-xl p-4 text-sm sm:text-base text-slate-200">
+              <li v-for="(item, lIdx) in paragraph.split('\n').filter(line => line.trim().startsWith('- '))" :key="lIdx" class="leading-relaxed">
+                {{ item.replace(/^-\s*/, '').replace(/\*\*/g, '') }}
+              </li>
+            </ul>
             <p v-else class="leading-relaxed text-slate-200">
-              {{ paragraph }}
+              {{ paragraph.replace(/\*\*/g, '') }}
             </p>
           </template>
         </div>

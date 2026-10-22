@@ -103,12 +103,35 @@ const emit = defineEmits<{
           <span class="px-2.5 py-0.5 rounded bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider">
             {{ prediction.badge }}
           </span>
+          <span
+            v-if="prediction.newsFormat"
+            class="px-2.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold"
+          >
+            {{ prediction.newsFormat }} ({{ prediction.optimalWordCount || '1,200 – 2,500+ words' }})
+          </span>
           <span class="text-xs text-slate-400 font-medium">{{ prediction.venue }}</span>
         </div>
 
         <h3 class="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
           {{ prediction.headline }}
         </h3>
+
+        <!-- 5 Ws Rapid Top Stories Indexing Box (300-500w Breaking News Format Rule) -->
+        <div v-if="prediction.fiveWs" class="bg-slate-950/90 border border-amber-500/30 rounded-xl p-3.5 sm:p-4 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] sm:text-xs font-black uppercase tracking-wider text-amber-400">
+              Breaking News / Quick Update • The 5 Ws (Top Stories Rapid Indexing)
+            </span>
+            <span class="text-[10px] font-mono text-slate-400">300 – 500 Words Core Lead</span>
+          </div>
+          <ul class="space-y-1.5 text-xs sm:text-sm text-slate-200">
+            <li><strong class="text-amber-300">WHO:</strong> {{ prediction.fiveWs.who }}</li>
+            <li><strong class="text-amber-300">WHAT:</strong> {{ prediction.fiveWs.what }}</li>
+            <li><strong class="text-amber-300">WHEN:</strong> {{ prediction.fiveWs.when }}</li>
+            <li><strong class="text-amber-300">WHERE:</strong> {{ prediction.fiveWs.where }}</li>
+            <li><strong class="text-amber-300">WHY:</strong> {{ prediction.fiveWs.why }}</li>
+          </ul>
+        </div>
 
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
           <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
@@ -140,6 +163,32 @@ const emit = defineEmits<{
           <p v-for="(para, idx) in prediction.paragraphs" :key="idx">
             {{ para }}
           </p>
+        </div>
+
+        <!-- E-E-A-T Investigative Features & Analysis Sections (1,200 - 2,500+ Words Rule) -->
+        <div v-if="prediction.eeatSections?.length" class="space-y-4 pt-3 border-t border-slate-800/90">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-[11px] sm:text-xs font-black uppercase tracking-wider text-cyan-400">
+              Investigative Features &amp; Analysis • E-E-A-T Deep Matchup Breakdown
+            </span>
+            <span class="text-[10px] font-mono text-slate-400">Evergreen &amp; Long-Tail SEO Strategy</span>
+          </div>
+          <div
+            v-for="(sec, sIdx) in prediction.eeatSections"
+            :key="sIdx"
+            class="bg-slate-950/75 border border-slate-800/90 rounded-xl p-3.5 sm:p-4 space-y-2"
+          >
+            <h4 class="text-xs sm:text-sm font-black text-white tracking-tight">
+              {{ sec.heading }}
+            </h4>
+            <p
+              v-for="(p, pIdx) in sec.paragraphs"
+              :key="pIdx"
+              class="text-xs sm:text-sm text-slate-300 leading-relaxed"
+            >
+              {{ p }}
+            </p>
+          </div>
         </div>
 
         <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

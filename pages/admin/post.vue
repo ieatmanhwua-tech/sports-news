@@ -3,6 +3,12 @@ import { ref, onMounted, computed, watch } from 'vue';
 import type { Article, Author, ContentType, ArticleStatus } from '~/shared/types';
 import { CATEGORIES_REGISTRY } from '~/shared/categories';
 import { getCurrentManilaDateParts, ensureFreshManilaPublishIso } from '~/shared/ph-date';
+import {
+  AUTOMATION_BLOG_FORMAT_RULES,
+  evaluateWordCountAgainstRule,
+  detectFormatRuleFromWordCount,
+  type AutomationBlogFormatId
+} from '~/shared/blog-automation-rules';
 import { 
   PenSquare, 
   Save, 
@@ -136,6 +142,15 @@ const wordCount = computed(() => {
   return text.split(/\s+/).filter(Boolean).length;
 });
 const readTimeMinutes = computed(() => Math.max(1, Math.ceil(wordCount.value / 200)));
+
+const selectedFormatRuleId = ref<AutomationBlogFormatId>('breaking-news');
+watch(wordCount, (newCount) => {
+  const detected = detectFormatRuleFromWordCount(newCount);
+  selectedFormatRuleId.value = detected.id;
+});
+const activeFormatEvaluation = computed(() =>
+  evaluateWordCountAgainstRule(wordCount.value, selectedFormatRuleId.value)
+);
 
 // Check authentication on mount
 onMounted(async () => {
@@ -870,25 +885,39 @@ useHead({
     </div>
 
     <!-- Quick Tool Ribbon -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-      <!-- Word Count & Goals -->
-      <div class="flex items-center gap-3 bg-white px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 shadow-sm">
-        <span>Word Count: <strong class="text-slate-900">{{ wordCount }}</strong> words</span>
-        <span class="text-slate-300">|</span>
-        <span>Est. Read: <strong class="text-slate-900">{{ readTimeMinutes }} min</strong></span>
-        <span class="text-slate-300">|</span>
-        <span class="inline-flex items-center gap-1">
-          <span 
-            class="w-2 h-2 rounded-full" 
-            :class="wordCount >= 280 && wordCount <= 350 ? 'bg-emerald-500' : 'bg-amber-400'"
-          ></span>
-          <span class="text-[11px] text-slate-500">300-word Quick Update Indexing goal</span>
-        </span>
-      </div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 space-y-3 text-xs">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <!-- Word Count & 3-Tier Format Rules Indicator -->
+        <div class="flex flex-wrap items-center gap-3 bg-white px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 shadow-sm">
+          <span>Word Count: <strong class="text-slate-900">{{ wordCount.toLocaleString() }}</strong> words</span>
+          <span class="text-slate-300">|</span>
+          <span>Est. Read: <strong class="text-slate-900">{{ readTimeMinutes }} min</strong></span>
+          <span class="text-slate-300">|</span>
+          <div class="inline-flex items-center gap-1.5">
+            <span 
+              class="w-2.5 h-2.5 rounded-full shrink-0" 
+              :class="activeFormatEvaluation.isOptimal ? 'bg-emerald-500' : 'bg-amber-500'"
+            ></span>
+            <select
+              v-model="selectedFormatRuleId"
+              class="bg-slate-100 border border-slate-300 rounded px-2 py-0.5 text-[11px] font-bold text-slate-800 focus:outline-none focus:border-[#E67E22]"
+            >
+              <option v-for="rule in AUTOMATION_BLOG_FORMAT_RULES" :key="rule.id" :value="rule.id">
+                {{ rule.newsFormat }} ({{ rule.optimalWordCountLabel }})
+              </option>
+            </select>
+            <span
+              class="text-[11px] font-semibold"
+              :class="activeFormatEvaluation.isOptimal ? 'text-emerald-700' : 'text-amber-700'"
+            >
+              {{ activeFormatEvaluation.statusLabel }}
+            </span>
+          </div>
+        </div>
 
-      <!-- Quick Template Shortcuts -->
-      <div class="flex items-center flex-wrap gap-2">
-        <span class="text-slate-400 text-[11px]">Quick Templates:</span>
+        <!-- Quick Template Shortcuts -->
+        <div class="flex items-center flex-wrap gap-2">
+          <span class="text-slate-400 text-[11px]">Quick Templates:</span>
         <button 
           type="button" 
           @click="loadMPBLTemplate"
@@ -942,13 +971,62 @@ useHead({
           <TrendingUp class="w-3 h-3 text-amber-400" />
           <span>Insert NBA Odds</span>
         </button>
-        <button 
-          type="button" 
-          @click="clearForm"
-          class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[11px] transition-colors"
-        >
-          <RotateCcw class="w-3 h-3 inline mr-0.5" /> Reset Blank
-        </button>
+          <button 
+            type="button" 
+            @click="clearForm"
+            class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[11px] transition-colors"
+          >
+            <RotateCcw class="w-3 h-3 inline mr-0.5" /> Reset Blank
+          </button>
+        </div>
+      </div>
+
+      <!-- Official 3-Tier News Format & Optimal Word Count Strategy Table -->
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div class="px-4 py-2 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <span class="font-black uppercase tracking-wider text-amber-400">
+            Automated Blog SEO Format &amp; Optimal Word Count Rules
+          </span>
+          <span class="text-slate-300">
+            Select a format to benchmark your story’s word count and SEO structure
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-[10px] uppercase tracking-wider">
+                <th class="py-2 px-3 font-black">News Format</th>
+                <th class="py-2 px-3 font-black">Optimal Word Count</th>
+                <th class="py-2 px-3 font-black">SEO Purpose &amp; Strategy</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200">
+              <tr
+                v-for="rule in AUTOMATION_BLOG_FORMAT_RULES"
+                :key="rule.id"
+                @click="selectedFormatRuleId = rule.id"
+                class="cursor-pointer transition-colors"
+                :class="selectedFormatRuleId === rule.id ? 'bg-amber-50/80' : 'hover:bg-slate-50'"
+              >
+                <td class="py-2 px-3 font-bold text-slate-900 whitespace-nowrap">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span
+                      class="w-2 h-2 rounded-full"
+                      :class="selectedFormatRuleId === rule.id ? 'bg-[#E67E22]' : 'bg-slate-300'"
+                    ></span>
+                    <span>{{ rule.newsFormat }}</span>
+                  </span>
+                </td>
+                <td class="py-2 px-3 font-mono font-bold text-[#D35400] whitespace-nowrap">
+                  {{ rule.optimalWordCountLabel }}
+                </td>
+                <td class="py-2 px-3 text-slate-600 leading-relaxed">
+                  {{ rule.seoPurposeAndStrategy }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 

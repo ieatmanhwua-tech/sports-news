@@ -105,6 +105,12 @@ const emit = defineEmits<{
           <span class="px-2.5 py-0.5 rounded bg-emerald-400 text-slate-950 text-xs font-black uppercase tracking-wider">
             {{ report.badge }}
           </span>
+          <span
+            v-if="report.newsFormat"
+            class="px-2.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold"
+          >
+            {{ report.newsFormat }} ({{ report.optimalWordCount || '600 – 900 words' }})
+          </span>
           <span class="text-xs text-slate-400 font-medium">{{ report.venue }} · {{ report.manilaTime }}</span>
         </div>
 
@@ -152,6 +158,40 @@ const emit = defineEmits<{
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Post-Game Locker Room Quotes (Standard Game Recaps & Reports 600-900 Words Rule) -->
+        <div v-if="report.playerQuotes?.length" class="bg-slate-950/90 border border-emerald-500/30 rounded-xl p-3.5 sm:p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="text-[11px] sm:text-xs font-black uppercase tracking-wider text-emerald-400">
+              Post-Game Locker Room Quotes &amp; Reactions
+            </h4>
+            <span class="text-[10px] font-mono text-slate-400">Standard Game Recap (600–900 Words)</span>
+          </div>
+          <div
+            v-for="(q, qIdx) in report.playerQuotes"
+            :key="qIdx"
+            class="border-l-2 border-emerald-400 pl-3 py-1 space-y-1 bg-emerald-500/5 rounded-r-lg"
+          >
+            <p class="text-xs sm:text-sm italic text-slate-200 leading-relaxed">{{ q.quote }}</p>
+            <div class="text-[11px] font-bold text-emerald-300">
+              — {{ q.speaker }} <span class="font-normal text-slate-400">({{ q.role }})</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Statistical Context & Secondary Keywords without Fluff -->
+        <div v-if="report.statisticalContextParagraphs?.length" class="bg-slate-950/75 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-2.5">
+          <h4 class="text-[11px] sm:text-xs font-black uppercase tracking-wider text-amber-400">
+            Statistical Context &amp; Matchup Telemetry
+          </h4>
+          <p
+            v-for="(sp, spIdx) in report.statisticalContextParagraphs"
+            :key="spIdx"
+            class="text-xs sm:text-sm text-slate-300 leading-relaxed"
+          >
+            {{ sp }}
+          </p>
         </div>
 
         <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
