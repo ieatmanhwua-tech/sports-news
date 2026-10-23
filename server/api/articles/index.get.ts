@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
 
   const isFeatured = query.featured !== undefined ? query.featured === 'true' : undefined;
   const isBreaking = query.breaking !== undefined ? query.breaking === 'true' : undefined;
+  const forceSync = query.refresh === 'true' || query.force === 'true';
 
   const result = await ArticleRepository.getPublicArticles({
     categorySlug,
@@ -28,7 +29,8 @@ export default defineEventHandler(async (event) => {
     limit,
     offset,
     isFeatured,
-    isBreaking
+    isBreaking,
+    forceSync
   });
 
   return {
@@ -36,6 +38,7 @@ export default defineEventHandler(async (event) => {
     total: result.total,
     page,
     limit,
-    totalPages: Math.ceil(result.total / limit)
+    totalPages: Math.ceil(result.total / limit),
+    syncedAt: new Date().toISOString()
   };
 });

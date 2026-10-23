@@ -2,6 +2,7 @@
 import { ArrowLeft } from 'lucide-vue-next';
 import { PROMO_URL, buildDualModeHref, type HighlightReportArticle } from '~/shared/seo-routing';
 import { handleImageErrorToCrest, handleBannerImageError } from '~/shared/image-resolver';
+import AdUnit from '~/components/AdUnit.vue';
 
 defineProps<{
   report: HighlightReportArticle;
@@ -133,6 +134,9 @@ const emit = defineEmits<{
           </ul>
         </div>
 
+        <!-- Mid-post 300x250 Rotating Ad Unit -->
+        <AdUnit format="rectangle" />
+
         <div class="overflow-x-auto bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4">
           <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
             Quarter-by-Quarter Box Score Table
@@ -193,6 +197,9 @@ const emit = defineEmits<{
             {{ sp }}
           </p>
         </div>
+
+        <!-- Post Footer Rotating Banner (320x50 / Horizontal) -->
+        <AdUnit format="banner" />
 
         <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>

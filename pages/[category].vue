@@ -8,7 +8,7 @@ import ArticleCard from '~/components/ArticleCard.vue';
 import EditorialSidebar from '~/components/EditorialSidebar.vue';
 import AdUnit from '~/components/AdUnit.vue';
 import LeagueFilterBar from '~/components/LeagueFilterBar.vue';
-import { ChevronLeft, ChevronRight, FileQuestion, Tv } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, FileQuestion, Tv, RefreshCw, Flame } from 'lucide-vue-next';
 
 const route = useRoute();
 const config = useRuntimeConfig();
@@ -33,6 +33,10 @@ const matchedSeoTabConfig = computed(() =>
 
 const pageNum = computed(() => Math.max(1, Number(route.query.page || 1)));
 const selectedContentType = ref<ContentType | 'all'>('all');
+const selectedLeagueTopic = ref<string>('all');
+const isCheckingNew = ref(false);
+const forceRefreshFlag = ref(false);
+const lastCheckedLabel = ref('Just now (PHT)');
 
 // Verify category in registry when not a Live Hub SEO slug
 const category = getCategoryBySlug(categorySlug.value);
@@ -48,7 +52,7 @@ if (!category && !matchedSeoTabId.value && lowerSlug.value !== 'c6yv') {
 // Fetch articles for this category ONLY when not a Live Hub SEO tab
 const { data, refresh } = await useAsyncData(`cat-${categorySlug.value}-${pageNum.value}`, async () => {
   if (!category || matchedSeoTabId.value) {
-    return { articles: [], total: 0, page: 1, totalPages: 1 };
+    return { articles: [], total: 0, page: 1, totalPages: 1, syncedAt: new Date().toISOString() };
   }
   const query: Record<string, any> = {
     category: categorySlug.value,
@@ -58,11 +62,18 @@ const { data, refresh } = await useAsyncData(`cat-${categorySlug.value}-${pageNu
   if (selectedContentType.value !== 'all') {
     query.contentType = selectedContentType.value;
   }
+  if (selectedLeagueTopic.value !== 'all') {
+    query.topic = selectedLeagueTopic.value;
+  }
+  if (forceRefreshFlag.value) {
+    query.refresh = 'true';
+  }
   return await $fetch<{
     articles: Article[];
     total: number;
     page: number;
     totalPages: number;
+    syncedAt?: string;
   }>('/api/articles', { query });
 });
 
@@ -104,6 +115,46 @@ function handleFilter(type: ContentType | 'all') {
   selectedContentType.value = type;
   refresh();
 }
+
+function handleLeagueTopicFilter(topic: string) {
+  selectedLeagueTopic.value = topic;
+  refresh();
+}
+
+async function checkNewUpdatesNow() {
+  if (isCheckingNew.value) return;
+  isCheckingNew.value = true;
+  forceRefreshFlag.value = true;
+  try {
+    await refresh();
+    lastCheckedLabel.value = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    }).format(new Date()) + ' PHT';
+  } finally {
+    forceRefreshFlag.value = false;
+    isCheckingNew.value = false;
+  }
+}
+
+let autoUpdateTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  if (lowerSlug.value === 'rumors-and-trades') {
+    autoUpdateTimer = setInterval(() => {
+      checkNewUpdatesNow();
+    }, 45000);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (autoUpdateTimer) {
+    clearInterval(autoUpdateTimer);
+    autoUpdateTimer = null;
+  }
+});
 
 const mappedLeagueForScores = computed(() => {
   const s = lowerSlug.value;
@@ -158,48 +209,108 @@ const categoryScores = ref<GameScore[]>([]);
         </p>
 
         <!-- Functional Filter Tabs -->
-        <div class="mt-6 flex flex-wrap items-center gap-2 pt-4 border-t border-slate-800 text-xs">
-          <span class="text-slate-400 font-bold mr-2">Filter content:</span>
-          <button 
-            type="button" 
-            @click="handleFilter('all')"
-            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            :class="selectedContentType === 'all' 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
-              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-800 text-xs">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-slate-400 font-bold mr-1">Filter content:</span>
+            <button 
+              type="button" 
+              @click="handleFilter('all')"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              :class="selectedContentType === 'all' 
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
+            >
+              All Stories ({{ total }})
+            </button>
+            <button 
+              type="button" 
+              @click="handleFilter('rumor')"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              :class="selectedContentType === 'rumor' 
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
+            >
+              Trade Rumors
+            </button>
+            <button 
+              type="button" 
+              @click="handleFilter('news')"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              :class="selectedContentType === 'news' 
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
+            >
+              Reported News
+            </button>
+            <button 
+              type="button" 
+              @click="handleFilter('editorial')"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              :class="selectedContentType === 'editorial' 
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
+            >
+              Editorials & Analysis
+            </button>
+          </div>
+
+          <button
+            type="button"
+            @click="checkNewUpdatesNow"
+            :disabled="isCheckingNew"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 transition-all disabled:opacity-60"
           >
-            All Stories
+            <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isCheckingNew }" />
+            <span>{{ isCheckingNew ? 'Syncing Live Wire...' : 'Check for New Updates' }}</span>
           </button>
-          <button 
-            type="button" 
-            @click="handleFilter('news')"
-            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            :class="selectedContentType === 'news' 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
-              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
-          >
-            Reported News
-          </button>
-          <button 
-            type="button" 
-            @click="handleFilter('rumor')"
-            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            :class="selectedContentType === 'rumor' 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
-              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
-          >
-            Trade Rumors
-          </button>
-          <button 
-            type="button" 
-            @click="handleFilter('editorial')"
-            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            :class="selectedContentType === 'editorial' 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(249,115,22,0.4)]' 
-              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80'"
-          >
-            Editorials
-          </button>
+        </div>
+
+        <!-- Dedicated Live Trade & Rumor Wire League Filter Bar for /rumors-and-trades -->
+        <div
+          v-if="lowerSlug === 'rumors-and-trades'"
+          class="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs"
+        >
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="inline-flex items-center gap-1 text-amber-400 font-black uppercase tracking-wider mr-1">
+              <Flame class="w-3.5 h-3.5 text-orange-400" />
+              League Wire:
+            </span>
+            <button
+              type="button"
+              @click="handleLeagueTopicFilter('all')"
+              class="px-2.5 py-1 rounded-md font-bold transition-all"
+              :class="selectedLeagueTopic === 'all' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-slate-900/70 text-slate-400 hover:text-white border border-slate-800'"
+            >
+              All Leagues
+            </button>
+            <button
+              type="button"
+              @click="handleLeagueTopicFilter('pba-news')"
+              class="px-2.5 py-1 rounded-md font-bold transition-all"
+              :class="selectedLeagueTopic === 'pba-news' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-slate-900/70 text-slate-400 hover:text-white border border-slate-800'"
+            >
+              PBA Trade Desk
+            </button>
+            <button
+              type="button"
+              @click="handleLeagueTopicFilter('nba-news')"
+              class="px-2.5 py-1 rounded-md font-bold transition-all"
+              :class="selectedLeagueTopic === 'nba-news' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-slate-900/70 text-slate-400 hover:text-white border border-slate-800'"
+            >
+              NBA Trade Wire
+            </button>
+            <button
+              type="button"
+              @click="handleLeagueTopicFilter('overseas-filipino-players')"
+              class="px-2.5 py-1 rounded-md font-bold transition-all"
+              :class="selectedLeagueTopic === 'overseas-filipino-players' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-slate-900/70 text-slate-400 hover:text-white border border-slate-800'"
+            >
+              Overseas / B.League & KBL
+            </button>
+          </div>
+          <div class="text-[11px] text-slate-400 font-mono">
+            Auto-sync active · Last checked: <span class="text-emerald-400 font-bold">{{ lastCheckedLabel }}</span>
+          </div>
         </div>
       </div>
     </header>

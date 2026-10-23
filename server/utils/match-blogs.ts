@@ -16,6 +16,10 @@ import {
   computeAccurateMatchBlogPublishIso
 } from '../../shared/ph-date';
 import { queueAutomatedBlogsForIndexing } from './gsc-indexing';
+import {
+  buildCuratedRumorsAndTradesArticles,
+  buildDynamicMatchTradeWireArticles
+} from './rumors-and-trades-wire';
 
 let lastBlogSyncTime = 0;
 let lastBlogSyncYmd = '';
@@ -401,8 +405,23 @@ export function convertMatchToBlogArticle(
 
 async function performMatchBlogSync(force: boolean): Promise<void> {
   try {
+    const snap = getCurrentManilaDateParts();
+    const curatedRumors = buildCuratedRumorsAndTradesArticles();
+    const curatedRumorIds = new Set(curatedRumors.map(a => a.id));
+
     const sportsData = await fetchLocalSportsData(force);
     if (!sportsData || !Array.isArray(sportsData.allMatches) || sportsData.allMatches.length === 0) {
+      const baseArticles = inMemoryStore.articles.filter(
+        a =>
+          !String(a.id).startsWith('art-match-today-') &&
+          !String(a.id).startsWith('art-rumor-live-') &&
+          !curatedRumorIds.has(a.id)
+      );
+      inMemoryStore.articles = [...curatedRumors, ...baseArticles];
+      inMemoryStore.refreshRelations();
+      lastBlogSyncTime = Date.now();
+      lastBlogSyncYmd = snap.ymd;
+      if (onArticlesUpdatedHook) onArticlesUpdatedHook();
       return;
     }
 
@@ -421,7 +440,6 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
     });
 
     // Sort: 1. Live matches, 2. Today's Manila date matches, 3. Yesterday/Tomorrow Manila date matches, 4. Other matches
-    const snap = getCurrentManilaDateParts();
     const sortedMatches = [...validMatches].sort((a, b) => {
       const rankStatus = (m: PhSportsMatch) => {
         if (m.status === 'live') return 0;
@@ -445,17 +463,30 @@ async function performMatchBlogSync(force: boolean): Promise<void> {
     });
 
     // Track all images already used by static editorial & NBA preseason prediction articles so zero images are ever duplicated
-    const nonMatchArticles = inMemoryStore.articles.filter(a => !String(a.id).startsWith('art-match-today-'));
+    const nonMatchArticles = inMemoryStore.articles.filter(
+      a =>
+        !String(a.id).startsWith('art-match-today-') &&
+        !String(a.id).startsWith('art-rumor-live-') &&
+        !curatedRumorIds.has(a.id)
+    );
     const usedImages = new Set<string>(
-      nonMatchArticles.map(a => String(a.featuredImageUrl || '').trim()).filter(Boolean)
+      [...curatedRumors, ...nonMatchArticles]
+        .map(a => String(a.featuredImageUrl || '').trim())
+        .filter(Boolean)
     );
 
     const generatedArticles = sortedMatches.map((m, idx) =>
       convertMatchToBlogArticle(m, idx, usedImages)
     );
+    const dynamicTradeWireArticles = buildDynamicMatchTradeWireArticles(sortedMatches, usedImages);
 
     // Merge into inMemoryStore.articles
-    inMemoryStore.articles = [...nonMatchArticles, ...generatedArticles];
+    inMemoryStore.articles = [
+      ...curatedRumors,
+      ...dynamicTradeWireArticles,
+      ...nonMatchArticles,
+      ...generatedArticles
+    ];
     inMemoryStore.refreshRelations();
     lastBlogSyncTime = Date.now();
     lastBlogSyncYmd = snap.ymd;

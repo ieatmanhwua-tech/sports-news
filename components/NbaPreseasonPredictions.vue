@@ -19,6 +19,7 @@ import {
   Target,
   Activity
 } from 'lucide-vue-next';
+import AdUnit from '~/components/AdUnit.vue';
 
 const props = withDefaults(defineProps<{
   compactHeader?: boolean;
@@ -407,6 +408,9 @@ function scrollToCard(id: string) {
                 {{ para }}
               </p>
             </div>
+
+            <!-- Rotating Post Ad Banner -->
+            <AdUnit format="banner" />
 
             <!-- Action Footer -->
             <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80">

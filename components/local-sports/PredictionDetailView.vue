@@ -2,6 +2,7 @@
 import { ArrowLeft } from 'lucide-vue-next';
 import { PROMO_URL, buildDualModeHref, type PredictionBlogArticle } from '~/shared/seo-routing';
 import { handleImageErrorToCrest, handleBannerImageError } from '~/shared/image-resolver';
+import AdUnit from '~/components/AdUnit.vue';
 
 defineProps<{
   prediction: PredictionBlogArticle;
@@ -165,6 +166,9 @@ const emit = defineEmits<{
           </p>
         </div>
 
+        <!-- Mid-post 300x250 Rotating Ad Unit -->
+        <AdUnit format="rectangle" />
+
         <!-- E-E-A-T Investigative Features & Analysis Sections (1,200 - 2,500+ Words Rule) -->
         <div v-if="prediction.eeatSections?.length" class="space-y-4 pt-3 border-t border-slate-800/90">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -190,6 +194,9 @@ const emit = defineEmits<{
             </p>
           </div>
         </div>
+
+        <!-- Post Footer Rotating Banner (320x50 / Horizontal) -->
+        <AdUnit format="banner" />
 
         <div class="mt-4 sm:mt-6 p-3.5 sm:p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>

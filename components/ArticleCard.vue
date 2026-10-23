@@ -100,6 +100,12 @@ const contentTypeLabel = computed(() => {
         <time :datetime="article.publishedAt" class="text-slate-400 text-[11px]">
           {{ formatRelativeTime(article.publishedAt) }}
         </time>
+        <template v-if="layout !== 'compact' && article.wordCount">
+          <span class="text-slate-600" aria-hidden="true">·</span>
+          <span class="text-[11px] font-mono text-cyan-400/90">
+            {{ article.wordCount.toLocaleString() }}w
+          </span>
+        </template>
       </div>
 
       <!-- Article Title -->

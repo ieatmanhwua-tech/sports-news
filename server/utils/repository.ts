@@ -34,13 +34,17 @@ export class ArticleRepository {
     offset?: number;
     isFeatured?: boolean;
     isBreaking?: boolean;
+    forceSync?: boolean;
   } = {}): Promise<{ articles: Article[]; total: number }> {
-    await ensureTodaysMatchBlogsSynced();
+    await ensureTodaysMatchBlogsSynced(Boolean(options.forceSync));
+    if (options.forceSync) {
+      ArticleRepository.invalidateCache();
+    }
     const status = await getDatabaseStatus();
 
     const cacheKey = JSON.stringify(options);
     const now = Date.now();
-    if (status.mode !== 'MYSQL') {
+    if (status.mode !== 'MYSQL' && !options.forceSync) {
       const cached = publicArticlesQueryCache.get(cacheKey);
       if (cached && now - cached.timestamp < QUERY_CACHE_TTL_MS) {
         return cached.result;

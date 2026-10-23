@@ -309,6 +309,11 @@ function onHeroImgError(e: Event) {
             <p v-else class="leading-relaxed text-slate-200">
               {{ paragraph.replace(/\*\*/g, '') }}
             </p>
+
+            <!-- Mid-article 300x250 Rotating Ad Unit after opening paragraphs -->
+            <div v-if="pIdx === 1" class="my-6 not-prose">
+              <AdUnit format="rectangle" />
+            </div>
           </template>
         </div>
 
@@ -333,7 +338,7 @@ function onHeroImgError(e: Event) {
           </p>
         </div>
 
-        <!-- Mid-article Ad Slot -->
+        <!-- Post Ad Slot (Rotates 320x50 / Horizontal Kadario Live Score & VIP Banner every 5s) -->
         <div class="my-8">
           <AdUnit format="banner" />
         </div>

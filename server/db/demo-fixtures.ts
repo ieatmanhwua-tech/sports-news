@@ -2,6 +2,7 @@ import type { Article, Author, GameScore } from '../../shared/types';
 import { CATEGORIES_REGISTRY } from '../../shared/categories';
 import { NBA_PRESEASON_PREDICTIONS_TOMORROW, NBA_PRESEASON_PREDICTIONS_FIVE_GAME_SLATE } from '../../shared/nba-predictions';
 import { getCurrentManilaDateParts } from '../../shared/ph-date';
+import { buildCuratedRumorsAndTradesArticles } from '../utils/rumors-and-trades-wire';
 
 const _fixtureManilaDate = getCurrentManilaDateParts();
 const _anchorMs = _fixtureManilaDate.verifiedPublishAnchorMs;
@@ -359,45 +360,7 @@ With the victory, the Fighting Maroons improve to 7-0 at the conclusion of the f
     publishedAt: '2026-10-08T22:30:00Z',
     createdAt: '2026-10-08T21:45:00Z'
   },
-  {
-    id: 'art-005',
-    slug: 'rumor-two-rival-pba-franchises-exploring-blockbuster-three-team-trade',
-    title: 'Trade Rumor: Two Rival PBA Franchises Exploring Blockbuster Three-Team Deal',
-    excerpt: 'Multiple league insiders confirm preliminary trade discussions centered on an All-Star shooting guard and future draft capital, awaiting trade committee vetting.',
-    body: `MANILA — As the PBA trade window approaches its mid-conference deadline, whispers from team boardrooms indicate that a high-profile multi-team transaction is currently being explored by at least two prominent franchises, with a third team positioned as a salary and draft pick facilitator.
-
-*Disclaimer: TipOffPh classifies this report as an Attributed Rumor based on multiple verified league sources. No formal trade papers have been submitted to the PBA Commissioner's Office as of Tuesday morning.*
-
-### The Moving Pieces
-
-According to three independent team officials speaking on the condition of anonymity, discussions involve a former All-Star guard who has seen his rotational minutes decrease following recent lineup adjustments.
-
-The proposed framework would see:
-1. **Franchise A**: Acquires an established two-way perimeter creator and a 2027 second-round draft asset.
-2. **Franchise B**: Adds frontcourt depth and rim protection to counter San Miguel's interior dominance.
-3. **Franchise C (Facilitator)**: Receives an unprotected first-round draft selection and cash considerations.
-
-### Vetting Process and Commissioner Review
-
-Any transaction of this magnitude must clear the PBA Trade Committee, led by technical officials tasked with evaluating roster parity and competitive balance. League insiders expect formal paperwork to be finalized only after this weekend's critical conference fixtures.
-
-TipOffPh will continue to track developments as official confirmations emerge.`,
-    primaryCategoryId: 'rumors-and-trades',
-    topicIds: ['rumors-and-trades', 'pba-news'],
-    authorId: 'author-joaquin-santos',
-    contentType: 'rumor',
-    sourceName: 'PBA League Sources',
-    featuredImageUrl: '/img/articles/pba-trade-rumors-blockbuster.webp',
-    imageAlt: 'PBA trade rumors breakdown for blockbuster three-team deal involving All-Star guard',
-    imageCredit: 'TipOffPh / Insider Desk',
-    seoTitle: 'PBA Blockbuster Three-Team Trade Rumors Heat Up | TipOffPh',
-    seoDescription: 'Multiple league insiders report advanced preliminary discussions on a major three-team PBA trade involving an All-Star guard and draft capital.',
-    isFeatured: false,
-    isBreaking: false,
-    status: 'published',
-    publishedAt: '2026-10-08T16:00:00Z',
-    createdAt: '2026-10-08T15:00:00Z'
-  },
+  ...buildCuratedRumorsAndTradesArticles(),
   {
     id: 'art-006',
     slug: 'editorial-why-the-rise-of-filipinos-in-the-japan-bleague-is-elevating-gilas',
