@@ -34,6 +34,8 @@ interface AdSlide {
 const activeSlideIdx = ref(0);
 let rotationTimer: ReturnType<typeof setInterval> | null = null;
 
+const KADARIO_URL = 'https://kadario.com/';
+
 const adSlides = computed<AdSlide[]>(() => {
   const defaultHref = props.linkUrl || '#';
 
@@ -49,7 +51,7 @@ const adSlides = computed<AdSlide[]>(() => {
         {
           src: kadarioRectangleImg,
           alt: 'Kadario Live Scores — Basketball & Football (300x250)',
-          href: defaultHref,
+          href: KADARIO_URL,
           bannerId: 'kadario-live-score-mobile.png',
           bannerSize: '300x250'
         }
@@ -59,7 +61,7 @@ const adSlides = computed<AdSlide[]>(() => {
       {
         src: kadarioRectangleImg,
         alt: 'Kadario Live Scores — Basketball & Football (300x250)',
-        href: defaultHref,
+        href: KADARIO_URL,
         bannerId: 'kadario-live-score-mobile.png',
         bannerSize: '300x250'
       },
@@ -82,7 +84,7 @@ const adSlides = computed<AdSlide[]>(() => {
       {
         src: kadarioBannerImg,
         alt: 'Kadario Live Scores — Basketball & Football Banner',
-        href: defaultHref,
+        href: KADARIO_URL,
         bannerId: 'kadario-live-score.png',
         bannerSize: '320x50'
       }
@@ -99,7 +101,7 @@ const adSlides = computed<AdSlide[]>(() => {
     {
       src: kadarioBannerImg,
       alt: 'Kadario Live Scores — Basketball & Football (320x50 Banner)',
-      href: defaultHref,
+      href: KADARIO_URL,
       bannerId: 'kadario-live-score.png',
       bannerSize: '320x50'
     },
@@ -126,7 +128,11 @@ function trackKadarioEvent(action: 'impression' | 'click', slide: AdSlide | unde
     banner_name: slide.bannerId,
     banner_size: slide.bannerSize || props.format,
     ad_format: props.format,
-    destination_url: slide.href
+    destination_url: slide.href,
+    link_url: slide.href,
+    link_domain: 'kadario.com',
+    outbound: true,
+    transport_type: 'beacon'
   });
 }
 
@@ -182,6 +188,8 @@ onUnmounted(() => {
     <a 
       v-if="currentSlide"
       :href="currentSlide.href"
+      :target="currentSlide.href.startsWith('http') ? '_blank' : undefined"
+      :rel="currentSlide.href.startsWith('http') ? 'noopener noreferrer' : undefined"
       @click="handleAdClick(currentSlide)"
       class="relative block overflow-hidden rounded-xl shadow-md border border-slate-700/80 bg-slate-950 hover:opacity-95 transition-all"
       :class="{
