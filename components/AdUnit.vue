@@ -19,7 +19,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   format: 'rectangle',
   imageAlt: 'Advertisement',
-  linkUrl: '#',
+  linkUrl: 'https://tipoff.bybetcasino.ph/c6Yv/',
   intervalMs: 5000
 });
 
@@ -29,31 +29,55 @@ interface AdSlide {
   href: string;
   bannerId?: string;
   bannerSize?: string;
+  brand?: 'kadario' | 'bybet';
 }
 
 const activeSlideIdx = ref(0);
 let rotationTimer: ReturnType<typeof setInterval> | null = null;
 
 const KADARIO_URL = 'https://kadario.com/';
+const BYBET_URL = 'https://tipoff.bybetcasino.ph/c6Yv/';
+
+function resolveHrefForImage(src: string, fallbackUrl?: string): string {
+  if (
+    src.includes('exclusive-vip-rewards.webp') ||
+    src.includes('nba-back-to-back-boost.webp')
+  ) {
+    return BYBET_URL;
+  }
+  if (!fallbackUrl || fallbackUrl === '#') {
+    return BYBET_URL;
+  }
+  return fallbackUrl;
+}
+
+function resolveBannerId(src: string): string | undefined {
+  if (src.includes('exclusive-vip-rewards.webp')) return 'exclusive-vip-rewards.webp';
+  if (src.includes('nba-back-to-back-boost.webp')) return 'nba-back-to-back-boost.webp';
+  return undefined;
+}
 
 const adSlides = computed<AdSlide[]>(() => {
-  const defaultHref = props.linkUrl || '#';
-
   if (props.format === 'rectangle') {
     const primaryCustom = props.imageUrl && !props.imageUrl.includes('kadario-live-score-mobile');
     if (primaryCustom) {
+      const customSrc = props.imageUrl!;
       return [
         {
-          src: props.imageUrl!,
+          src: customSrc,
           alt: props.imageAlt !== 'Advertisement' ? props.imageAlt : 'NBA Back-to-Back Boost — ByBet PH',
-          href: defaultHref
+          href: resolveHrefForImage(customSrc, props.linkUrl),
+          bannerId: resolveBannerId(customSrc),
+          bannerSize: '300x250',
+          brand: 'bybet'
         },
         {
           src: kadarioRectangleImg,
           alt: 'Kadario Live Scores — Basketball & Football (300x250)',
           href: KADARIO_URL,
           bannerId: 'kadario-live-score-mobile.png',
-          bannerSize: '300x250'
+          bannerSize: '300x250',
+          brand: 'kadario'
         }
       ];
     }
@@ -63,30 +87,39 @@ const adSlides = computed<AdSlide[]>(() => {
         alt: 'Kadario Live Scores — Basketball & Football (300x250)',
         href: KADARIO_URL,
         bannerId: 'kadario-live-score-mobile.png',
-        bannerSize: '300x250'
+        bannerSize: '300x250',
+        brand: 'kadario'
       },
       {
         src: '/img/nba-back-to-back-boost.webp',
         alt: 'NBA Back-to-Back Boost — ByBet PH',
-        href: defaultHref
+        href: BYBET_URL,
+        bannerId: 'nba-back-to-back-boost.webp',
+        bannerSize: '300x250',
+        brand: 'bybet'
       }
     ];
   }
 
   if (props.format === 'leaderboard') {
     const primaryCustom = props.imageUrl && !props.imageUrl.includes('kadario-live-score');
+    const primarySrc = primaryCustom ? props.imageUrl! : '/img/exclusive-vip-rewards.webp';
     return [
       {
-        src: primaryCustom ? props.imageUrl! : '/img/exclusive-vip-rewards.webp',
+        src: primarySrc,
         alt: props.imageAlt !== 'Advertisement' ? props.imageAlt : 'Exclusive VIP Sports Rebate — ByBet PH',
-        href: defaultHref
+        href: resolveHrefForImage(primarySrc, props.linkUrl),
+        bannerId: resolveBannerId(primarySrc),
+        bannerSize: '728x90',
+        brand: 'bybet'
       },
       {
         src: kadarioBannerImg,
         alt: 'Kadario Live Scores — Basketball & Football Banner',
         href: KADARIO_URL,
         bannerId: 'kadario-live-score.png',
-        bannerSize: '320x50'
+        bannerSize: '320x50',
+        brand: 'kadario'
       }
     ];
   }
@@ -103,12 +136,16 @@ const adSlides = computed<AdSlide[]>(() => {
       alt: 'Kadario Live Scores — Basketball & Football (320x50 Banner)',
       href: KADARIO_URL,
       bannerId: 'kadario-live-score.png',
-      bannerSize: '320x50'
+      bannerSize: '320x50',
+      brand: 'kadario'
     },
     {
       src: secondaryBanner,
       alt: props.imageAlt !== 'Advertisement' ? props.imageAlt : 'Exclusive VIP Sports Rebate — ByBet PH',
-      href: defaultHref
+      href: resolveHrefForImage(secondaryBanner, props.linkUrl),
+      bannerId: resolveBannerId(secondaryBanner),
+      bannerSize: '320x50',
+      brand: 'bybet'
     }
   ];
 });
@@ -118,11 +155,13 @@ const currentSlide = computed<AdSlide>(() => {
   return list[activeSlideIdx.value % list.length] || list[0]!;
 });
 
-function trackKadarioEvent(action: 'impression' | 'click', slide: AdSlide | undefined) {
+function trackAdEvent(action: 'impression' | 'click', slide: AdSlide | undefined) {
   if (!slide?.bannerId || typeof window === 'undefined' || typeof window.gtag !== 'function') {
     return;
   }
-  window.gtag('event', action === 'click' ? 'kadario_banner_click' : 'kadario_banner_impression', {
+  const eventPrefix = slide.brand === 'bybet' ? 'bybet_banner' : 'kadario_banner';
+  const linkDomain = slide.brand === 'bybet' ? 'tipoff.bybetcasino.ph' : 'kadario.com';
+  window.gtag('event', `${eventPrefix}_${action}`, {
     event_category: 'advertisement',
     event_label: slide.bannerId,
     banner_name: slide.bannerId,
@@ -130,25 +169,25 @@ function trackKadarioEvent(action: 'impression' | 'click', slide: AdSlide | unde
     ad_format: props.format,
     destination_url: slide.href,
     link_url: slide.href,
-    link_domain: 'kadario.com',
+    link_domain: linkDomain,
     outbound: true,
     transport_type: 'beacon'
   });
 }
 
 function handleAdClick(slide: AdSlide) {
-  trackKadarioEvent('click', slide);
+  trackAdEvent('click', slide);
 }
 
 watch(
   () => currentSlide.value,
   (slide) => {
-    trackKadarioEvent('impression', slide);
+    trackAdEvent('impression', slide);
   }
 );
 
 onMounted(() => {
-  trackKadarioEvent('impression', currentSlide.value);
+  trackAdEvent('impression', currentSlide.value);
   if (adSlides.value.length > 1) {
     rotationTimer = setInterval(() => {
       activeSlideIdx.value = (activeSlideIdx.value + 1) % adSlides.value.length;
